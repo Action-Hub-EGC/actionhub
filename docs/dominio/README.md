@@ -1,0 +1,9 @@
+# Dominio
+
+Documentación del dominio de ActionHub. Se completa durante M1.
+
+- Modelo de datos: `BaseDataset`, `WorkflowDataset`, `Version`.
+- Validación: L1 sintáctica, L2 de esquema, L3 estática y L4 de seguridad.
+- Manifiesto `actionhub.yaml`.
+- Catálogo de reglas y cálculo de la calificación A–F.
+- Métricas de dominio y facetas de exploración.
