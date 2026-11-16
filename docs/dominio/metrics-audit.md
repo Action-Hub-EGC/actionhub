@@ -224,18 +224,18 @@ Los registros no son hits. Son **una fila por cookie, recurso y usuario**. Conse
 
 Por tanto, las métricas se nombran `visits` y `downloads`, no `page_views` ni `requests`. En la interfaz se puede aclarar “visitantes únicos por navegador” cuando se muestre el dato agregado.
 
-### 6.4. Registros huérfanos
+### 6.4. Registros sin recurso vivo
 
-`dataset_id` y `file_id` son nullable y las claves foráneas no tienen `ON DELETE CASCADE`. `DataSet.delete()` (`app/features/dataset/models.py:83-85`) borra el dataset, pero no sus registros de actividad.
+`dataset_id` y `file_id` son nullable, pero las claves foráneas de MariaDB **impiden** borrar un workflow o un archivo que todavía tenga registros: `DataSet.delete()` (`app/features/dataset/models.py:83-85`) falla con `IntegrityError` si hay actividad, porque no existe `ON DELETE CASCADE`. En la práctica no deberían existir huérfanos. Sí pueden existir filas con `dataset_id` o `file_id` a `NULL` si una escritura no valida el recurso.
 
-**Decisión:** las consultas de métricas usan `INNER JOIN` contra la entidad viva. Un registro huérfano no cuenta. Es el comportamiento correcto para el perfil: no se muestran métricas de workflows que ya no existen. La limpieza de huérfanos se tratará como tarea de mantenimiento independiente, no en #61.
+**Decisión:** las consultas de métricas usan `INNER JOIN` contra la entidad viva. Una fila sin recurso no cuenta. Es el comportamiento correcto para el perfil: no se muestran métricas de workflows que ya no existen. Si en el futuro se añade borrado en cascada o se desactivan las claves foráneas, la regla sigue siendo la misma. Hoy no hace falta una limpieza; si aparecen filas nulas, se corrige el servicio que las creó.
 
 ### 6.5. Otros detalles
 
 - `HubfileViewRecord.view_date` y `view_cookie` admiten `NULL` en la migración (`migrations/versions/001.py:159-164`), aunque el servicio siempre los rellena. Las consultas deben tolerar nulos: `COALESCE` o `IS NOT NULL` según el caso.
 - `DSDownloadRecord.dataset_id` y `HubfileDownloadRecord.file_id` admiten `NULL`. Se descartan con el `INNER JOIN`.
 - `DSMetrics` (`number_of_models`, `number_of_features`) es un residuo estático del dominio UVL. **No se usa** para métricas de uso y no debe mostrarse como si fuera actividad.
-- Los totales globales de la portada y las sumas por propietario pueden diferir solo por huérfanos o por registros sin `dataset_id`. No es un error.
+- Los totales globales de la portada y las sumas por propietario pueden diferir solo por filas sin `dataset_id`. No es un error.
 
 ## 7. Métricas propuestas
 
@@ -459,7 +459,7 @@ Las visitas y descargas por workflow se obtienen con subconsultas agregadas por 
 
 ### 9.5. Última actividad
 
-`GREATEST` no trata los nulos igual en MariaDB y SQLite, y las fechas conviven con registros huérfanos. Es más portable calcular cuatro escalares y quedarse con el mayor en Python:
+`GREATEST` no trata los nulos igual en MariaDB y SQLite, y las fechas conviven con filas sin recurso. Es más portable calcular cuatro escalares y quedarse con el mayor en Python:
 
 ```python
 def _max_date(query) -> datetime | None:
@@ -507,7 +507,7 @@ last_activity_at = max((value for value in candidates if value is not None), def
    - dos propietarios con workflows publicados y borradores;
    - visitas y descargas anónimas y autenticadas;
    - registros de un workflow ajeno que no deben contar;
-   - registro huérfano que no debe contar;
+   - fila sin recurso que no debe contar;
    - `download_rate` con cero visitas devuelve `None`;
    - fechas normalizadas a UTC.
 6. Revisión de José (@Jfgm299) y merge a `trunk`.
@@ -520,7 +520,7 @@ last_activity_at = max((value for value in candidates if value is not None), def
 | --- | --- | --- | --- |
 | D1 | ¿Publicar exige validación L1+L2? | Sí, a partir de M2, en el servicio de publicación | Equipo |
 | D2 | ¿Se renombran las tablas a `workflow`, `version`, `workflow_file`? | No antes de M3; migración con compatibilidad | DevOps |
-| D3 | ¿Se limpian los registros huérfanos? | Tarea de mantenimiento aparte, no en #62 | DevOps |
+| D3 | ¿Se añade `ON DELETE CASCADE` para los registros? | No: las claves foráneas actuales protegen la integridad; borrar un workflow con actividad debe ser una decisión explícita | DevOps |
 | D4 | ¿La serie temporal de 30 días entra en #62? | Solo si el resto está terminado | Marcos |
 | D5 | ¿Se muestra `unique_visitors` en el perfil? | Sí, con la nota “por navegador” | Marcos |
 
