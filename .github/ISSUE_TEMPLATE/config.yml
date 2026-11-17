@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Tablero del proyecto
+    url: https://github.com/orgs/Action-Hub-EGC/projects/1
+    about: Consulta el estado de las tareas y los bloqueos antes de abrir un issue.
+  - name: Acta fundacional
+    url: https://github.com/Action-Hub-EGC/actionhub/tree/trunk/docs/acta-fundacional
+    about: Acuerdos de organización, roles, ramas y régimen interno.
