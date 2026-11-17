@@ -4,12 +4,22 @@ on:
   push:
     branches:
       - main
+      - trunk
   pull_request:
     branches:
       - main
       - trunk
 
 jobs:
+  commits:
+    name: Conventional Commits
+    runs-on: ubuntu-24.04
+
+    steps:
+      # Validates commit messages against the Conventional Commits specification
+      - name: Validate commit messages
+        uses: webiny/action-conventional-commits@v1.3.0
+
   lint:
     name: Ruff + Black
     runs-on: ubuntu-24.04
