@@ -1,7 +1,7 @@
 [project]
-name = "uvlhub"
-version = "1.0.0"
-description = "UVLHub — Flask product built on splent_framework."
+name = "actionhub"
+version = "0.1.0"
+description = "ActionHub - registro de workflows de GitHub Actions basado en UVLHub."
 readme = "README.md"
 requires-python = ">=3.13"
 
