@@ -31,6 +31,10 @@ def create_app(config_name: str = "development") -> Flask:
 
     ConfigManager(app).load_config(config_name=config_name)
     _apply_database_port(app)
+    # Public address of the site, used to build absolute links (dataset DOI
+    # URLs, embeddable badges). Set PREFERRED_URL_SCHEME=https behind TLS.
+    app.config["DOMAIN"] = os.getenv("DOMAIN", "localhost")
+    app.config["PREFERRED_URL_SCHEME"] = os.getenv("PREFERRED_URL_SCHEME", "http")
     db.init_app(app)
     migrate.init_app(app, db)
 
@@ -86,7 +90,7 @@ def _setup_jinja_globals(app: Flask) -> None:
         context={
             "FLASK_APP_NAME": os.getenv("FLASK_APP_NAME"),
             "FLASK_ENV": os.getenv("FLASK_ENV"),
-            "DOMAIN": os.getenv("DOMAIN", "localhost"),
+            "DOMAIN": app.config["DOMAIN"],
             "APP_VERSION": get_app_version(),
         },
     )
