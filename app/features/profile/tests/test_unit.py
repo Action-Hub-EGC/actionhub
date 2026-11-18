@@ -27,6 +27,8 @@ def make_service():
     service = UserProfileService()
     service.repository = MagicMock()
     service._datasets = MagicMock()
+    service._metrics = MagicMock()
+    service._metrics.owner_summary.return_value = {"workflows_total": 7}
     return service
 
 
@@ -71,7 +73,6 @@ def test_summary_for_user_assembles_pagination_payload():
     pagination = MagicMock()
     pagination.items = ["ds-1", "ds-2"]
     service._datasets.paginate_for_user.return_value = pagination
-    service._datasets.count_for_user.return_value = 7
 
     summary = service.summary_for_user(9, page=2, per_page=3)
 
@@ -79,14 +80,14 @@ def test_summary_for_user_assembles_pagination_payload():
         "datasets": ["ds-1", "ds-2"],
         "pagination": pagination,
         "total_datasets": 7,
+        "metrics": {"workflows_total": 7},
     }
     service._datasets.paginate_for_user.assert_called_once_with(9, 2, 3)
-    service._datasets.count_for_user.assert_called_once_with(9)
+    service._metrics.owner_summary.assert_called_once_with(9)
 
 
 def test_summary_for_user_uses_five_items_per_page_by_default():
     service = make_service()
-    service._datasets.count_for_user.return_value = 0
 
     service.summary_for_user(9, page=1)
 
