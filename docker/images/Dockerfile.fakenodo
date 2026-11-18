@@ -1,0 +1,11 @@
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY fakenodo/ ./fakenodo/
+RUN pip install --no-cache-dir flask==3.1.0
+
+ENV FAKENODO_STORE_PATH=/data/fakenodo.sqlite3
+EXPOSE 8000
+
+CMD ["python", "-m", "fakenodo.app"]
