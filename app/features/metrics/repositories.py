@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import case, desc, func
 
 from app import db
-from app.features.dataset.models import DataSet, DSDownloadRecord, DSMetaData, DSViewRecord
+from app.features.dataset.models import BaseDataset, DSDownloadRecord, DSMetaData, DSViewRecord
 from app.features.featuremodel.models import FeatureModel
 from app.features.hubfile.models import Hubfile, HubfileDownloadRecord, HubfileViewRecord
 from app.features.metrics.utils import as_utc
@@ -14,21 +14,21 @@ class MetricsRepository:
     """Read-only aggregations over the existing catalog and activity tables.
 
     Every query joins the record to its live resource and filters by
-    ``DataSet.user_id``. The ``user_id`` stored in a view/download record is
+    ``BaseDataset.user_id``. The ``user_id`` stored in a view/download record is
     the visitor, never the owner, so it must not be used for attribution.
     """
 
     def owner_catalog_metrics(self, owner_id: int) -> dict:
         counts = (
             db.session.query(
-                func.count(DataSet.id).label("workflows_total"),
+                func.count(BaseDataset.id).label("workflows_total"),
                 func.coalesce(
                     func.sum(case((DSMetaData.dataset_doi.isnot(None), 1), else_=0)),
                     0,
                 ).label("published_total"),
             )
-            .join(DSMetaData, DataSet.ds_meta_data_id == DSMetaData.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(DSMetaData, BaseDataset.ds_meta_data_id == DSMetaData.id)
+            .filter(BaseDataset.user_id == owner_id)
             .one()
         )
 
@@ -38,10 +38,10 @@ class MetricsRepository:
                 func.count(Hubfile.id).label("files_total"),
                 func.coalesce(func.sum(Hubfile.size), 0).label("size_total_bytes"),
             )
-            .select_from(DataSet)
-            .join(FeatureModel, FeatureModel.data_set_id == DataSet.id)
+            .select_from(BaseDataset)
+            .join(FeatureModel, FeatureModel.data_set_id == BaseDataset.id)
             .outerjoin(Hubfile, Hubfile.feature_model_id == FeatureModel.id)
-            .filter(DataSet.user_id == owner_id)
+            .filter(BaseDataset.user_id == owner_id)
             .one()
         )
 
@@ -60,36 +60,36 @@ class MetricsRepository:
     def owner_activity_metrics(self, owner_id: int) -> dict:
         workflow_views = (
             db.session.query(func.count(DSViewRecord.id))
-            .join(DataSet, DSViewRecord.dataset_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, DSViewRecord.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar()
         )
         workflow_downloads = (
             db.session.query(func.count(DSDownloadRecord.id))
-            .join(DataSet, DSDownloadRecord.dataset_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, DSDownloadRecord.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar()
         )
         file_views = (
             db.session.query(func.count(HubfileViewRecord.id))
             .join(Hubfile, HubfileViewRecord.file_id == Hubfile.id)
             .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(DataSet, FeatureModel.data_set_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar()
         )
         file_downloads = (
             db.session.query(func.count(HubfileDownloadRecord.id))
             .join(Hubfile, HubfileDownloadRecord.file_id == Hubfile.id)
             .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(DataSet, FeatureModel.data_set_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar()
         )
         unique_visitors = (
             db.session.query(func.count(func.distinct(DSViewRecord.view_cookie)))
-            .join(DataSet, DSViewRecord.dataset_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id, DSViewRecord.view_cookie.isnot(None))
+            .join(BaseDataset, DSViewRecord.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id, DSViewRecord.view_cookie.isnot(None))
             .scalar()
         )
 
@@ -104,24 +104,24 @@ class MetricsRepository:
     def last_activity(self, owner_id: int) -> Optional[datetime]:
         candidates = [
             db.session.query(func.max(DSViewRecord.view_date))
-            .join(DataSet, DSViewRecord.dataset_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, DSViewRecord.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar(),
             db.session.query(func.max(DSDownloadRecord.download_date))
-            .join(DataSet, DSDownloadRecord.dataset_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, DSDownloadRecord.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar(),
             db.session.query(func.max(HubfileViewRecord.view_date))
             .join(Hubfile, HubfileViewRecord.file_id == Hubfile.id)
             .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(DataSet, FeatureModel.data_set_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar(),
             db.session.query(func.max(HubfileDownloadRecord.download_date))
             .join(Hubfile, HubfileDownloadRecord.file_id == Hubfile.id)
             .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(DataSet, FeatureModel.data_set_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .scalar(),
         ]
         # MariaDB hands back naive datetimes; they are all UTC by convention.
@@ -173,10 +173,10 @@ class MetricsRepository:
 
         return (
             db.session.query(
-                DataSet.id.label("id"),
+                BaseDataset.id.label("id"),
                 DSMetaData.title.label("title"),
                 DSMetaData.dataset_doi.label("dataset_doi"),
-                DataSet.created_at.label("created_at"),
+                BaseDataset.created_at.label("created_at"),
                 func.count(func.distinct(FeatureModel.id)).label("versions_total"),
                 func.count(func.distinct(Hubfile.id)).label("files_total"),
                 dataset_views_count.label("workflow_views"),
@@ -184,19 +184,19 @@ class MetricsRepository:
                 file_views_count.label("file_views"),
                 file_downloads_count.label("file_downloads"),
             )
-            .join(DSMetaData, DataSet.ds_meta_data_id == DSMetaData.id)
-            .outerjoin(FeatureModel, FeatureModel.data_set_id == DataSet.id)
+            .join(DSMetaData, BaseDataset.ds_meta_data_id == DSMetaData.id)
+            .outerjoin(FeatureModel, FeatureModel.data_set_id == BaseDataset.id)
             .outerjoin(Hubfile, Hubfile.feature_model_id == FeatureModel.id)
-            .outerjoin(dataset_views, dataset_views.c.dataset_id == DataSet.id)
-            .outerjoin(dataset_downloads, dataset_downloads.c.dataset_id == DataSet.id)
-            .outerjoin(file_views, file_views.c.dataset_id == DataSet.id)
-            .outerjoin(file_downloads, file_downloads.c.dataset_id == DataSet.id)
-            .filter(DataSet.user_id == owner_id)
+            .outerjoin(dataset_views, dataset_views.c.dataset_id == BaseDataset.id)
+            .outerjoin(dataset_downloads, dataset_downloads.c.dataset_id == BaseDataset.id)
+            .outerjoin(file_views, file_views.c.dataset_id == BaseDataset.id)
+            .outerjoin(file_downloads, file_downloads.c.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
             .group_by(
-                DataSet.id,
+                BaseDataset.id,
                 DSMetaData.title,
                 DSMetaData.dataset_doi,
-                DataSet.created_at,
+                BaseDataset.created_at,
                 dataset_views.c.views,
                 dataset_downloads.c.downloads,
                 file_views.c.file_views,

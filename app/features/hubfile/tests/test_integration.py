@@ -51,7 +51,7 @@ def _make_hubfile(email="owner@example.com", name="model.uvl", size=2048):
 def _write_upload(root, user_id, dataset_id, name, content):
     directory = os.path.join(str(root), "uploads", f"user_{user_id}", f"dataset_{dataset_id}")
     os.makedirs(directory, exist_ok=True)
-    with open(os.path.join(directory, name), "w") as f:
+    with open(os.path.join(directory, name), "w", newline="") as f:
         f.write(content)
 
 

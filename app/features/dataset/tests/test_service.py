@@ -195,7 +195,7 @@ def test_build_download_archive_zips_the_dataset_upload_folder(test_app, clean_d
         dataset = _make_dataset(owner, title="Zippable")
         source_dir = tmp_path / "uploads" / f"user_{owner.id}" / f"dataset_{dataset.id}"
         source_dir.mkdir(parents=True)
-        (source_dir / "file1.uvl").write_text("features\n\tRoot\n")
+        (source_dir / "file1.uvl").write_bytes(b"features\n\tRoot\n")
 
         tmp_dir, zip_name = DataSetService().build_download_archive(dataset)
 
