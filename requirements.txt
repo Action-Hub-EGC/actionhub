@@ -112,6 +112,7 @@ referencing==0.37.0
 requests==2.33.1
 rpds-py==0.30.0
 rq==2.8.0
+ruamel.yaml==0.19.1
 selenium==4.43.0
 selenium-wire==5.1.0
 setuptools==82.0.1
