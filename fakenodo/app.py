@@ -9,7 +9,7 @@ def create_app(store: DepositionStore | None = None) -> Flask:
     app = Flask(__name__)
     app.config["TESTING"] = False
     app_store = store or DepositionStore(
-        os.getenv("FAKENODO_STORE_PATH", "/data/fakenodo.sqlite3")
+        os.getenv("FAKENODO_STORE_PATH", "./data/fakenodo.sqlite3")
     )
 
     @app.get("/health")
@@ -54,8 +54,5 @@ def create_app(store: DepositionStore | None = None) -> Flask:
     return app
 
 
-app = create_app()
-
-
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
+    create_app().run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
