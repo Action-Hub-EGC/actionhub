@@ -85,6 +85,7 @@ def test_files_and_sizes_are_aggregated_across_feature_models():
             SimpleNamespace(files=[SimpleNamespace(size=724)]),
         ]
     )
+    dataset.files = lambda: [file for fm in dataset.feature_models for file in fm.files]
 
     assert DataSet.get_files_count(dataset) == 3
     assert DataSet.get_file_total_size(dataset) == 1024
