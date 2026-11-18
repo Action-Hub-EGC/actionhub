@@ -12,6 +12,14 @@ from app import db
 from app.features.dataset.models import BaseDataset
 
 
+class ValidationStatus:
+    """Values stored in ``WorkflowDataset.validation_status``."""
+
+    DRAFT = "draft"
+    VALIDATED = "validated"
+    FAILED = "failed"
+
+
 class WorkflowDataset(BaseDataset):
     """A GitHub Actions workflow published in ActionHub."""
 
