@@ -1,0 +1,52 @@
+{% extends "base_template.html" %}
+
+{% block title %}Subir workflow{% endblock %}
+
+{% block content %}
+
+<h1 class="h2 mb-3"><b>Subir</b> workflow</h1>
+
+<div class="row">
+    <div class="col-12 col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <p class="text-secondary">
+                    Introduce los metadatos básicos. La subida del paquete
+                    (<code>actionhub.yaml</code>, <code>workflow.yml</code>, README y LICENSE)
+                    se implementa en #14.
+                </p>
+
+                <form method="post" action="#">
+                    {{ form.hidden_tag() }}
+
+                    <div class="mb-3">
+                        {{ form.title.label(class="form-label") }}
+                        {{ form.title(class="form-control") }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.description.label(class="form-label") }}
+                        {{ form.description(class="form-control", rows=4) }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.repository_url.label(class="form-label") }}
+                        {{ form.repository_url(class="form-control", placeholder="https://github.com/...") }}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.tags.label(class="form-label") }}
+                        {{ form.tags(class="form-control", placeholder="ci, release, security") }}
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" disabled>
+                        {{ form.submit.label.text }}
+                    </button>
+                    <a href="{{ url_for('workflow.index') }}" class="btn btn-outline-secondary">Cancelar</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
