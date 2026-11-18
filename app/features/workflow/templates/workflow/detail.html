@@ -1,0 +1,71 @@
+{% extends "base_template.html" %}
+
+{% block title %}{{ workflow.ds_meta_data.title }}{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <a href="{{ url_for('workflow.index') }}" class="btn btn-outline-secondary btn-sm mb-2">
+            <i data-feather="arrow-left"></i> Volver
+        </a>
+        <h1 class="h2 mb-1"><b>{{ workflow.ds_meta_data.title }}</b></h1>
+        <p class="text-secondary mb-0">{{ workflow.ds_meta_data.description }}</p>
+    </div>
+    {% if workflow.grade %}
+    <span class="badge bg-dark fs-5">{{ workflow.grade }}</span>
+    {% endif %}
+</div>
+
+<div class="row">
+    <div class="col-12 col-lg-8">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Metadatos</h5>
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Estado de validación</dt>
+                    <dd class="col-sm-8">{{ workflow.validation_status }}</dd>
+
+                    <dt class="col-sm-4">Puntuación de seguridad</dt>
+                    <dd class="col-sm-8">{{ workflow.security_score if workflow.security_score is not none else '—' }}</dd>
+
+                    <dt class="col-sm-4">Calificación</dt>
+                    <dd class="col-sm-8">{{ workflow.grade or '—' }}</dd>
+
+                    <dt class="col-sm-4">Versiones</dt>
+                    <dd class="col-sm-8">{{ versions|length }}</dd>
+
+                    <dt class="col-sm-4">Archivos</dt>
+                    <dd class="col-sm-8">{{ workflow.get_files_count() }}</dd>
+
+                    <dt class="col-sm-4">Creado</dt>
+                    <dd class="col-sm-8">{{ workflow.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Versiones</h5>
+                {% if versions %}
+                <ul class="list-group list-group-flush">
+                    {% for version in versions %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>Versión {{ loop.revindex }}</strong>
+                            <br>
+                            <small class="text-muted">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                        </div>
+                        <span class="badge bg-light text-dark">{{ version.files|length }} archivos</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-secondary mb-0">Todavía no hay versiones publicadas.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
