@@ -1,0 +1,96 @@
+import pytest
+
+from fakenodo.store import DepositionStore
+
+pytestmark = pytest.mark.unit
+
+
+def test_create_and_get_persisted_deposition(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+
+    deposition = store.create(
+        42,
+        metadata={"title": "Stable DOI"},
+        files=[{"filename": "model.uvl"}],
+    )
+
+    assert deposition == {
+        "id": 42,
+        "conceptrecid": 42,
+        "doi": None,
+        "state": "unsubmitted",
+        "metadata": {"title": "Stable DOI"},
+        "files": [{"filename": "model.uvl"}],
+        "version": 1,
+    }
+    assert store.get(42) == deposition
+
+
+def test_deposition_survives_store_reinitialization(tmp_path):
+    database = tmp_path / "fakenodo.sqlite3"
+    store = DepositionStore(database)
+    store.create(
+        7,
+        conceptrecid=7,
+        doi="10.5072/fakenodo.7",
+        state="done",
+        metadata={"title": "Persistent"},
+        files=[{"filename": "data.uvl"}],
+        version=1,
+    )
+
+    restarted_store = DepositionStore(database)
+
+    assert restarted_store.get(7)["doi"] == "10.5072/fakenodo.7"
+    assert restarted_store.get(7)["state"] == "done"
+
+
+def test_update_and_delete_deposition(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+    store.create(3)
+
+    updated = store.update(
+        3,
+        doi="10.5072/fakenodo.3",
+        state="done",
+        metadata={"title": "Published"},
+        files=[{"filename": "data.uvl"}],
+        version=2,
+    )
+
+    assert updated["doi"] == "10.5072/fakenodo.3"
+    assert updated["state"] == "done"
+    assert updated["metadata"] == {"title": "Published"}
+    assert updated["files"] == [{"filename": "data.uvl"}]
+    assert updated["version"] == 2
+    assert store.delete(3) is True
+    assert store.get(3) is None
+    assert store.delete(3) is False
+
+
+def test_list_and_auto_increment(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+    first = store.create(metadata={"title": "First"})
+    second = store.create(metadata={"title": "Second"})
+
+    assert first["id"] == 1
+    assert second["id"] == 2
+    assert [item["id"] for item in store.list()] == [1, 2]
+
+
+def test_deleted_id_is_not_reused(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+    store.create(metadata={"title": "First"})
+    second = store.create(metadata={"title": "Second"})
+    assert store.delete(second["id"]) is True
+
+    third = store.create(metadata={"title": "Third"})
+
+    assert third["id"] == 3
+
+
+def test_rejects_invalid_state(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+
+    with pytest.raises(ValueError, match="unsubmitted.*done"):
+        store.create(state="draft")
