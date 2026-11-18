@@ -64,21 +64,33 @@ class DSMetaData(db.Model):
     authors = db.relationship("Author", backref="ds_meta_data", lazy=True, cascade="all, delete")
 
 
-class DataSet(db.Model):
+class BaseDataset(db.Model):
+    """Common part of every dataset type in ActionHub.
+
+    The table keeps the historical name ``data_set`` to avoid a data
+    migration. ``type`` is the single-table inheritance discriminator:
+    existing rows are ``uvl``; workflow rows will be ``workflow``.
+    """
+
+    __tablename__ = "data_set"
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
     ds_meta_data_id = db.Column(db.Integer, db.ForeignKey("ds_meta_data.id"), nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    type = db.Column(db.String(20), nullable=False, default="uvl", server_default="uvl")
 
     ds_meta_data = db.relationship("DSMetaData", backref=db.backref("data_set", uselist=False))
-    feature_models = db.relationship("FeatureModel", backref="data_set", lazy=True, cascade="all, delete")
+
+    __mapper_args__ = {"polymorphic_on": type, "polymorphic_identity": "base"}
 
     def name(self):
         return self.ds_meta_data.title
 
     def files(self):
-        return [file for fm in self.feature_models for file in fm.files]
+        """Files that belong to the dataset. Subclasses override this."""
+        return []
 
     def delete(self):
         db.session.delete(self)
@@ -93,20 +105,24 @@ class DataSet(db.Model):
         return None
 
     def get_files_count(self):
-        return sum(len(fm.files) for fm in self.feature_models)
+        return len(self.files())
 
     def get_file_total_size(self):
-        return sum(file.size for fm in self.feature_models for file in fm.files)
+        return sum(file.size for file in self.files())
 
     def get_file_total_size_for_human(self):
         from app.features.dataset.services import SizeService
 
         return SizeService().get_human_readable_size(self.get_file_total_size())
 
-    def get_uvlhub_doi(self):
+    def get_public_doi(self):
         from app.features.dataset.services import DataSetService
 
-        return DataSetService().get_uvlhub_doi(self)
+        return DataSetService().get_public_doi(self)
+
+    def get_uvlhub_doi(self):
+        """Backward-compatible alias for ``get_public_doi``."""
+        return self.get_public_doi()
 
     def to_dict(self):
         return {
@@ -120,17 +136,33 @@ class DataSet(db.Model):
             "publication_doi": self.ds_meta_data.publication_doi,
             "dataset_doi": self.ds_meta_data.dataset_doi,
             "tags": self.ds_meta_data.tags.split(",") if self.ds_meta_data.tags else [],
-            "url": self.get_uvlhub_doi(),
+            "url": self.get_public_doi(),
             "download": f'{request.host_url.rstrip("/")}/dataset/download/{self.id}',
             "zenodo": self.get_zenodo_url(),
-            "files": [file.to_dict() for fm in self.feature_models for file in fm.files],
+            "files": [file.to_dict() for file in self.files()],
             "files_count": self.get_files_count(),
             "total_size_in_bytes": self.get_file_total_size(),
             "total_size_in_human_format": self.get_file_total_size_for_human(),
         }
 
     def __repr__(self):
-        return f"DataSet<{self.id}>"
+        return f"{self.__class__.__name__}<{self.id}>"
+
+
+class UVLDataset(BaseDataset):
+    """Dataset whose versions are UVL feature models."""
+
+    __mapper_args__ = {"polymorphic_identity": "uvl"}
+
+    feature_models = db.relationship("FeatureModel", backref="data_set", lazy=True, cascade="all, delete")
+
+    def files(self):
+        return [file for fm in self.feature_models for file in fm.files]
+
+
+# Backward-compatible name: existing imports, seeders and tests keep working
+# and create UVL datasets by default.
+DataSet = UVLDataset
 
 
 class DSDownloadRecord(db.Model):
