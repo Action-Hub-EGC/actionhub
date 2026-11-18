@@ -4,7 +4,6 @@ from flask import Flask, jsonify
 
 from fakenodo.store import DepositionStore
 
-
 app = Flask(__name__)
 store = DepositionStore(os.getenv("FAKENODO_STORE_PATH", "/data/fakenodo.sqlite3"))
 

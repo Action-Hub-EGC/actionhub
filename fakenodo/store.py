@@ -4,6 +4,7 @@ import copy
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -24,10 +25,19 @@ class DepositionStore:
         connection.row_factory = sqlite3.Row
         return connection
 
+    @contextmanager
+    def _connection(self):
+        """Open one connection, commit/rollback and close it reliably."""
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._lock, self._connect() as connection:
-            connection.execute(
-                """
+        with self._lock, self._connection() as connection:
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS depositions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     conceptrecid INTEGER,
@@ -37,8 +47,7 @@ class DepositionStore:
                     files TEXT NOT NULL,
                     version INTEGER NOT NULL DEFAULT 1
                 )
-                """
-            )
+                """)
 
     @staticmethod
     def _row_to_deposition(row: sqlite3.Row) -> dict[str, Any]:
@@ -69,7 +78,7 @@ class DepositionStore:
         metadata_value = copy.deepcopy(metadata or {})
         files_value = copy.deepcopy(list(files or []))
 
-        with self._lock, self._connect() as connection:
+        with self._lock, self._connection() as connection:
             if deposition_id is None:
                 cursor = connection.execute(
                     """
@@ -111,20 +120,16 @@ class DepositionStore:
         return self.get(deposition_id)
 
     def get(self, deposition_id: int) -> dict[str, Any] | None:
-        with self._lock, self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM depositions WHERE id = ?", (deposition_id,)
-            ).fetchone()
+        with self._lock, self._connection() as connection:
+            row = connection.execute("SELECT * FROM depositions WHERE id = ?", (deposition_id,)).fetchone()
         return self._row_to_deposition(row) if row else None
 
     def get_by_id(self, deposition_id: int) -> dict[str, Any] | None:
         return self.get(deposition_id)
 
     def list(self) -> list[dict[str, Any]]:
-        with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                "SELECT * FROM depositions ORDER BY id"
-            ).fetchall()
+        with self._lock, self._connection() as connection:
+            rows = connection.execute("SELECT * FROM depositions ORDER BY id").fetchall()
         return [self._row_to_deposition(row) for row in rows]
 
     def all(self) -> list[dict[str, Any]]:
@@ -161,7 +166,7 @@ class DepositionStore:
             values.append(value)
 
         values.append(deposition_id)
-        with self._lock, self._connect() as connection:
+        with self._lock, self._connection() as connection:
             cursor = connection.execute(
                 f"UPDATE depositions SET {', '.join(assignments)} WHERE id = ?",
                 values,
@@ -171,10 +176,8 @@ class DepositionStore:
         return self.get(deposition_id)
 
     def delete(self, deposition_id: int) -> bool:
-        with self._lock, self._connect() as connection:
-            cursor = connection.execute(
-                "DELETE FROM depositions WHERE id = ?", (deposition_id,)
-            )
+        with self._lock, self._connection() as connection:
+            cursor = connection.execute("DELETE FROM depositions WHERE id = ?", (deposition_id,))
             return cursor.rowcount > 0
 
 
