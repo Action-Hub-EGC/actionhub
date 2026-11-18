@@ -8,12 +8,28 @@ from app.features.dataset.models import DataSet
 
 
 class Hubfile(db.Model):
+    """Generic file.
+
+    A UVL file hangs from a ``FeatureModel``; a workflow package file hangs
+    from a ``WorkflowVersion``. The check constraint enforces exactly one.
+    Path resolution for workflow files is generalized in #14/#19.
+    """
+
     __tablename__ = "file"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(feature_model_id IS NOT NULL AND workflow_version_id IS NULL) OR "
+            "(feature_model_id IS NULL AND workflow_version_id IS NOT NULL)",
+            name="ck_file_one_version",
+        ),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     checksum = db.Column(db.String(120), nullable=False)
     size = db.Column(db.Integer, nullable=False)
-    feature_model_id = db.Column(db.Integer, db.ForeignKey("feature_model.id"), nullable=False)
+    feature_model_id = db.Column(db.Integer, db.ForeignKey("feature_model.id"), nullable=True)
+    workflow_version_id = db.Column(db.Integer, db.ForeignKey("workflow_version.id"), nullable=True)
 
     def get_formatted_size(self):
         from app.features.dataset.services import SizeService
