@@ -14,6 +14,7 @@ En desarrollo. Hito actual: **M1 · Dominio** (18 de noviembre de 2026).
 - [Acta fundacional](docs/acta-fundacional/)
 - [Diario del equipo](docs/diario/)
 - [Decisiones de arquitectura](docs/adr/)
+- [fakenodo: Zenodo simulado para desarrollo](fakenodo/README.md)
 - [Issues del proyecto](https://github.com/Action-Hub-EGC/actionhub/issues)
 - [Documentación de UVLHub](https://docs.uvlhub.io/)
 
@@ -70,6 +71,7 @@ docker compose -f docker/docker-compose.dev.yml exec web rosemary db:seed -y
 
 ```text
 app/            aplicación Flask
+fakenodo/       servicio que simula la API de Zenodo en desarrollo
 rosemary/       CLI de generación de features
 docker/         compose, imágenes y entrypoints
 migrations/     migraciones de Alembic
