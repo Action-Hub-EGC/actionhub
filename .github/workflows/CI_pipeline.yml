@@ -38,10 +38,10 @@ jobs:
         run: pip install ruff black==26.3.1
 
       - name: Lint with ruff
-        run: ruff check app rosemary
+        run: ruff check app rosemary fakenodo
 
       - name: Check formatting with black
-        run: black --check app rosemary
+        run: black --check app rosemary fakenodo
 
   test:
     name: Pytest + coverage
