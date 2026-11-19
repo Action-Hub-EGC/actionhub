@@ -89,11 +89,13 @@ jobs:
           pip install -r requirements.txt
           pip install -e ./rosemary
 
-      # Selenium tests need a browser grid, so they are left out of CI
+      # Selenium tests need a browser grid, so they are left out of CI.
+      # fakenodo's unit tests live in app/features/zenodo/tests and run here
+      # too; --cov=fakenodo makes the service count in the coverage report.
       - name: Run tests with coverage
         run: >-
           pytest --ignore-glob='*selenium*'
-          --cov=app --cov-report=term-missing --cov-report=xml
+          --cov=app --cov=fakenodo --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage report
         if: always()
