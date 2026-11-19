@@ -75,17 +75,18 @@ def test_counts_reflect_the_rows_actually_persisted(test_app, clean_database):
         assert service.count() == 1
 
 
-def test_get_uvlhub_doi_follows_the_configured_scheme_and_domain(test_app, clean_database, monkeypatch):
+def test_get_public_doi_follows_the_configured_scheme_and_domain(test_app, clean_database, monkeypatch):
     monkeypatch.setitem(test_app.config, "DOMAIN", "uvlhub.test")
     with test_app.app_context():
         owner = _make_user("owner@example.com")
         dataset = _make_dataset(owner, title="Published", doi="10.1234/published")
 
         monkeypatch.setitem(test_app.config, "PREFERRED_URL_SCHEME", "https")
+        assert DataSetService().get_public_doi(dataset) == "https://uvlhub.test/doi/10.1234/published"
         assert DataSetService().get_uvlhub_doi(dataset) == "https://uvlhub.test/doi/10.1234/published"
 
         monkeypatch.setitem(test_app.config, "PREFERRED_URL_SCHEME", "http")
-        assert DataSetService().get_uvlhub_doi(dataset) == "http://uvlhub.test/doi/10.1234/published"
+        assert DataSetService().get_public_doi(dataset) == "http://uvlhub.test/doi/10.1234/published"
 
 
 def test_dsmetadata_service_updates_and_finds_by_doi(test_app, clean_database):
@@ -199,7 +200,7 @@ def test_build_download_archive_zips_the_dataset_upload_folder(test_app, clean_d
         dataset = _make_dataset(owner, title="Zippable")
         source_dir = tmp_path / "uploads" / f"user_{owner.id}" / f"dataset_{dataset.id}"
         source_dir.mkdir(parents=True)
-        (source_dir / "file1.uvl").write_text("features\n\tRoot\n")
+        (source_dir / "file1.uvl").write_bytes(b"features\n\tRoot\n")
 
         tmp_dir, zip_name = DataSetService().build_download_archive(dataset)
 

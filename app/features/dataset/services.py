@@ -9,7 +9,7 @@ from flask import current_app, request
 from splent_framework.services.BaseService import BaseService
 
 from app.features.auth.services import AuthenticationService
-from app.features.dataset.models import DataSet, DSMetaData, DSViewRecord
+from app.features.dataset.models import BaseDataset, DSMetaData, DSViewRecord, UVLDataset
 from app.features.dataset.repositories import (
     AuthorRepository,
     DataSetRepository,
@@ -49,7 +49,7 @@ class DataSetService(BaseService):
         self.dsviewrecord_repostory = DSViewRecordRepository()
         self.hubfileviewrecord_repository = HubfileViewRecordRepository()
 
-    def move_feature_models(self, dataset: DataSet):
+    def move_feature_models(self, dataset: UVLDataset):
         current_user = AuthenticationService().get_authenticated_user()
         source_dir = current_user.temp_folder()
 
@@ -62,13 +62,13 @@ class DataSetService(BaseService):
             uvl_filename = feature_model.fm_meta_data.uvl_filename
             shutil.move(os.path.join(source_dir, uvl_filename), dest_dir)
 
-    def get_synchronized(self, current_user_id: int) -> DataSet:
+    def get_synchronized(self, current_user_id: int) -> BaseDataset:
         return self.repository.get_synchronized(current_user_id)
 
-    def get_unsynchronized(self, current_user_id: int) -> DataSet:
+    def get_unsynchronized(self, current_user_id: int) -> BaseDataset:
         return self.repository.get_unsynchronized(current_user_id)
 
-    def get_unsynchronized_dataset(self, current_user_id: int, dataset_id: int) -> DataSet:
+    def get_unsynchronized_dataset(self, current_user_id: int, dataset_id: int) -> BaseDataset:
         return self.repository.get_unsynchronized_dataset(current_user_id, dataset_id)
 
     def latest_synchronized(self):
@@ -89,7 +89,7 @@ class DataSetService(BaseService):
     def total_dataset_views(self) -> int:
         return self.dsviewrecord_repostory.total_dataset_views()
 
-    def create_from_form(self, form, current_user) -> DataSet:
+    def create_from_form(self, form, current_user) -> UVLDataset:
         main_author = {
             "name": f"{current_user.profile.surname}, {current_user.profile.name}",
             "affiliation": current_user.profile.affiliation,
@@ -102,7 +102,9 @@ class DataSetService(BaseService):
                 author = self.author_repository.create(commit=False, ds_meta_data_id=dsmetadata.id, **author_data)
                 dsmetadata.authors.append(author)
 
-            dataset = self.create(commit=False, user_id=current_user.id, ds_meta_data_id=dsmetadata.id)
+            dataset = UVLDataset(user_id=current_user.id, ds_meta_data_id=dsmetadata.id)
+            self.repository.session.add(dataset)
+            self.repository.session.flush()
 
             for feature_model in form.feature_models:
                 uvl_filename = feature_model.uvl_filename.data
@@ -226,7 +228,7 @@ class DataSetService(BaseService):
 
         return {"status": "ok", "code": 200, "message": "Everything works!"}
 
-    def build_download_archive(self, dataset: DataSet) -> tuple[str, str]:
+    def build_download_archive(self, dataset: BaseDataset) -> tuple[str, str]:
         """Zip the dataset's uploaded files and return ``(zip_path, filename)``.
 
         ``zip_path`` lives under a fresh tempdir; the caller is responsible for
@@ -252,10 +254,14 @@ class DataSetService(BaseService):
 
         return tmp_dir, zip_name
 
-    def get_uvlhub_doi(self, dataset: DataSet) -> str:
+    def get_public_doi(self, dataset: BaseDataset) -> str:
         scheme = current_app.config["PREFERRED_URL_SCHEME"]
         domain = current_app.config["DOMAIN"]
         return f"{scheme}://{domain}/doi/{dataset.ds_meta_data.dataset_doi}"
+
+    def get_uvlhub_doi(self, dataset: BaseDataset) -> str:
+        """Backward-compatible alias for ``get_public_doi``."""
+        return self.get_public_doi(dataset)
 
 
 class AuthorService(BaseService):
@@ -297,13 +303,13 @@ class DSViewRecordService(BaseService):
     def __init__(self):
         super().__init__(DSViewRecordRepository())
 
-    def the_record_exists(self, dataset: DataSet, user_cookie: str):
+    def the_record_exists(self, dataset: BaseDataset, user_cookie: str):
         return self.repository.the_record_exists(dataset, user_cookie)
 
-    def create_new_record(self, dataset: DataSet, user_cookie: str) -> DSViewRecord:
+    def create_new_record(self, dataset: BaseDataset, user_cookie: str) -> DSViewRecord:
         return self.repository.create_new_record(dataset, user_cookie)
 
-    def create_cookie(self, dataset: DataSet) -> str:
+    def create_cookie(self, dataset: BaseDataset) -> str:
 
         user_cookie = request.cookies.get("view_cookie")
         if not user_cookie:

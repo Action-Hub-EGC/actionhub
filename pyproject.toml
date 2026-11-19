@@ -16,6 +16,7 @@ features = [
     "profile",
     "public",
     "team",
+    "workflow",
     "zenodo",
 ]
 features_dev = [
