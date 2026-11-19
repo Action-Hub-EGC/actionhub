@@ -75,13 +75,18 @@ def test_counts_reflect_the_rows_actually_persisted(test_app, clean_database):
         assert service.count() == 1
 
 
-def test_get_uvlhub_doi_builds_a_url_from_the_configured_domain(test_app, clean_database, monkeypatch):
-    monkeypatch.setenv("DOMAIN", "uvlhub.test")
+def test_get_public_doi_follows_the_configured_scheme_and_domain(test_app, clean_database, monkeypatch):
+    monkeypatch.setitem(test_app.config, "DOMAIN", "uvlhub.test")
     with test_app.app_context():
         owner = _make_user("owner@example.com")
         dataset = _make_dataset(owner, title="Published", doi="10.1234/published")
 
-        assert DataSetService().get_uvlhub_doi(dataset) == "http://uvlhub.test/doi/10.1234/published"
+        monkeypatch.setitem(test_app.config, "PREFERRED_URL_SCHEME", "https")
+        assert DataSetService().get_public_doi(dataset) == "https://uvlhub.test/doi/10.1234/published"
+        assert DataSetService().get_uvlhub_doi(dataset) == "https://uvlhub.test/doi/10.1234/published"
+
+        monkeypatch.setitem(test_app.config, "PREFERRED_URL_SCHEME", "http")
+        assert DataSetService().get_public_doi(dataset) == "http://uvlhub.test/doi/10.1234/published"
 
 
 def test_dsmetadata_service_updates_and_finds_by_doi(test_app, clean_database):

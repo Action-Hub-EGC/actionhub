@@ -5,7 +5,7 @@ import shutil
 import uuid
 from typing import Optional
 
-from flask import request
+from flask import current_app, request
 from splent_framework.services.BaseService import BaseService
 
 from app.features.auth.services import AuthenticationService
@@ -255,8 +255,9 @@ class DataSetService(BaseService):
         return tmp_dir, zip_name
 
     def get_public_doi(self, dataset: BaseDataset) -> str:
-        domain = os.getenv("DOMAIN", "localhost")
-        return f"http://{domain}/doi/{dataset.ds_meta_data.dataset_doi}"
+        scheme = current_app.config["PREFERRED_URL_SCHEME"]
+        domain = current_app.config["DOMAIN"]
+        return f"{scheme}://{domain}/doi/{dataset.ds_meta_data.dataset_doi}"
 
     def get_uvlhub_doi(self, dataset: BaseDataset) -> str:
         """Backward-compatible alias for ``get_public_doi``."""
