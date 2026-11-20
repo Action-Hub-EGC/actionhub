@@ -1,5 +1,6 @@
-"""HTTP tests for the workflow feature scaffold (#13)."""
+"""HTTP tests for the workflow feature scaffold (#13) and package upload (#14)."""
 
+import io
 from datetime import datetime
 
 import pytest
@@ -9,6 +10,7 @@ from app.features.auth.repositories import UserRepository
 from app.features.dataset.models import DSMetaData, PublicationType
 from app.features.hubfile.models import Hubfile
 from app.features.workflow.models import WorkflowDataset, WorkflowVersion
+from app.features.workflow.tests.test_package import MANIFEST, make_zip
 
 pytestmark = pytest.mark.integration
 
@@ -115,5 +117,53 @@ def test_detail_renders_versions_and_files(test_client):
     assert response.status_code == 200
     assert b"Detail workflow" in response.data
     assert b"Versiones" in response.data
-    assert b"actionhub.yaml" not in response.data
+    assert b"actionhub.yaml" in response.data
     assert b"1 archivos" in response.data
+
+
+def test_upload_valid_package_redirects_and_persists(test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    test_client.post(
+        "/signup/",
+        data={"email": "package-route@example.com", "password": "secret", "name": "Ada", "surname": "Lovelace"},
+        follow_redirects=False,
+    )
+
+    response = test_client.post(
+        "/workflow/upload",
+        data={"package": (io.BytesIO(make_zip()), "workflow.zip")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/workflow/" in response.headers["Location"]
+    with test_client.application.app_context():
+        dataset = WorkflowDataset.query.order_by(WorkflowDataset.id.desc()).first()
+        assert dataset is not None
+        assert dataset.ds_meta_data.title == "demo-workflow"
+        assert dataset.validation_status == "validated"
+
+
+def test_upload_invalid_package_shows_actionable_errors(test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    test_client.post(
+        "/signup/",
+        data={"email": "package-route-bad@example.com", "password": "secret", "name": "Ada", "surname": "Lovelace"},
+        follow_redirects=False,
+    )
+    with test_client.application.app_context():
+        before = WorkflowDataset.query.count()
+
+    response = test_client.post(
+        "/workflow/upload",
+        data={"package": (io.BytesIO(make_zip(manifest=MANIFEST.replace("license: MIT", ""))), "workflow.zip")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert b"No se pudo subir el paquete" in response.data
+    assert b"license" in response.data
+    with test_client.application.app_context():
+        assert WorkflowDataset.query.count() == before

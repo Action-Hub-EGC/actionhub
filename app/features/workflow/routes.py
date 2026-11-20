@@ -1,10 +1,10 @@
 import logging
 
-from flask import jsonify, render_template
-from flask_login import login_required
+from flask import jsonify, redirect, render_template, url_for
+from flask_login import current_user, login_required
 
 from app.features.workflow import workflow_bp
-from app.features.workflow.forms import WorkflowDatasetForm
+from app.features.workflow.forms import WorkflowPackageForm
 from app.features.workflow.services import WorkflowDatasetService
 
 logger = logging.getLogger(__name__)
@@ -23,10 +23,17 @@ def health():
     return jsonify({"status": "ok", "feature": "workflow"})
 
 
-@workflow_bp.route("/workflow/upload", methods=["GET"])
+@workflow_bp.route("/workflow/upload", methods=["GET", "POST"])
 @login_required
 def upload():
-    return render_template("workflow/upload.html", form=WorkflowDatasetForm())
+    form = WorkflowPackageForm()
+    issues = []
+    if form.validate_on_submit():
+        dataset, issues = workflow_service.upload_package(form.package.data, current_user)
+        if dataset:
+            logger.info("Workflow package uploaded as dataset %s", dataset.id)
+            return redirect(url_for("workflow.detail", dataset_id=dataset.id))
+    return render_template("workflow/upload.html", form=form, issues=issues)
 
 
 @workflow_bp.route("/workflow/<int:dataset_id>")
