@@ -119,6 +119,14 @@ class PackageValidator:
                     )
                 )
                 continue
+            if len(name) > 120:
+                issues.append(
+                    PackageIssue(
+                        f"El nombre del archivo supera los 120 caracteres: {name}.",
+                        file=name,
+                    )
+                )
+                continue
             if name in files:
                 issues.append(PackageIssue("Archivo duplicado en el ZIP.", file=name))
                 continue
@@ -201,6 +209,15 @@ class PackageValidator:
                     f"Manifiesto inválido: {error.message}",
                     file="actionhub.yaml",
                     field=field,
+                )
+            )
+        tags = manifest.get("tags") or []
+        if tags and len(", ".join(tags)) > 120:
+            issues.append(
+                PackageIssue(
+                    "La suma de los tags supera los 120 caracteres de la columna.",
+                    file="actionhub.yaml",
+                    field="tags",
                 )
             )
         return manifest

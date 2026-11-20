@@ -112,6 +112,25 @@ def test_unknown_top_level_file_is_rejected():
     assert any("extra.txt" in issue.message for issue in result.issues)
 
 
+def test_file_name_longer_than_the_database_column_is_rejected():
+    long_name = "fixtures/" + ("a" * 115) + ".txt"
+
+    result = PackageValidator().validate_zip(make_zip({long_name: "x"}))
+
+    assert result.valid is False
+    assert any("120 caracteres" in issue.message for issue in result.issues)
+
+
+def test_tags_that_do_not_fit_the_database_column_are_rejected():
+    long_tags = "\n".join(f"  - {letter * 30}" for letter in "abcde")
+    manifest = MANIFEST.replace("tags:\n  - ci\n  - demo", f"tags:\n{long_tags}")
+
+    result = PackageValidator().validate_zip(make_zip(manifest=manifest))
+
+    assert result.valid is False
+    assert any(issue.field == "tags" for issue in result.issues)
+
+
 def test_valid_package_is_stored_as_unpublished_draft(test_app, test_client, monkeypatch, tmp_path):
     monkeypatch.setenv("WORKING_DIR", str(tmp_path))
     with test_app.app_context():

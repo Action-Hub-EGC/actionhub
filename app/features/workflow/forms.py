@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileRequired
-from wtforms import StringField, SubmitField
+from wtforms import SubmitField
 
 
 class WorkflowPackageForm(FlaskForm):
@@ -12,10 +12,3 @@ class WorkflowPackageForm(FlaskForm):
         ],
     )
     submit = SubmitField("Validar y guardar borrador")
-
-
-class WorkflowDatasetForm(FlaskForm):
-    """Legacy metadata form kept for compatibility with older imports."""
-
-    title = StringField("Title")
-    submit = SubmitField("Continue")
