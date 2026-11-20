@@ -9,3 +9,4 @@ Documentación del dominio de ActionHub. Se completa durante M1.
 - Métricas de dominio y facetas de exploración.
 - [Auditoría del código UVL y separación común / específico](uvl-audit.md).
 - [Auditoría de registros y métricas de perfil](metrics-audit.md).
+- [Diseño del versionado de datasets](versioning-design.md).
