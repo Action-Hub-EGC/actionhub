@@ -8,9 +8,7 @@ from fakenodo.store import DepositionStore
 
 def create_app(store: DepositionStore | None = None) -> Flask:
     app = Flask(__name__)
-    app_store = store or DepositionStore(
-        os.getenv("FAKENODO_STORE_PATH", "./data/fakenodo.sqlite3")
-    )
+    app_store = store or DepositionStore(os.getenv("FAKENODO_STORE_PATH", "./data/fakenodo.sqlite3"))
     depositions = Blueprint(
         "depositions",
         __name__,

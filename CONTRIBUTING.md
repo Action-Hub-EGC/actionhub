@@ -116,9 +116,9 @@ Antes de subir una rama:
 ```bash
 docker compose -f docker/docker-compose.dev.yml exec web \
   pytest app/features/ --ignore-glob='*selenium*'
-docker compose -f docker/docker-compose.dev.yml exec web flake8 app rosemary
-docker compose -f docker/docker-compose.dev.yml exec web black --check app rosemary
-docker compose -f docker/docker-compose.dev.yml exec web isort --check-only app rosemary
+docker compose -f docker/docker-compose.dev.yml exec web flake8 app rosemary fakenodo
+docker compose -f docker/docker-compose.dev.yml exec web black --check app rosemary fakenodo
+docker compose -f docker/docker-compose.dev.yml exec web isort --check-only app rosemary fakenodo
 ```
 
 ## Comunicación
