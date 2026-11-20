@@ -166,3 +166,23 @@ def test_invalid_package_does_not_create_a_dataset(test_app, test_client, monkey
         assert issues
         assert any("license" in issue.message for issue in issues)
         assert WorkflowDataset.query.count() == before
+
+
+def test_unexpected_persistence_error_hides_internal_details(test_app, test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    with test_app.app_context():
+        user = UserRepository().create(email="package-disk@example.com", password="secret")
+        before = WorkflowDataset.query.count()
+
+        def fail_makedirs(*args, **kwargs):
+            raise OSError("disk full secret")
+
+        monkeypatch.setattr("app.features.workflow.services.os.makedirs", fail_makedirs)
+        storage = SimpleNamespace(read=lambda: make_zip())
+
+        dataset, issues = WorkflowDatasetService().upload_package(storage, user)
+
+        assert dataset is None
+        assert issues[0].message == "No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo."
+        assert "disk full" not in issues[0].message
+        assert WorkflowDataset.query.count() == before

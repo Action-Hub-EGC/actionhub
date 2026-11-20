@@ -101,6 +101,7 @@ class WorkflowDatasetService(BaseService):
             session.flush()
 
             working_dir = os.getenv("WORKING_DIR", "")
+            # #37 will move this to uploads/user_<id>/dataset_<id>/v<major>/.
             destination = os.path.join(
                 working_dir,
                 "uploads",
@@ -131,4 +132,4 @@ class WorkflowDatasetService(BaseService):
             if destination:
                 shutil.rmtree(destination, ignore_errors=True)
             logger.exception("Could not persist workflow package: %s", exc)
-            return None, [PackageIssue(f"No se pudo guardar el paquete: {exc}")]
+            return None, [PackageIssue("No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo.")]
