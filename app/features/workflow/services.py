@@ -9,6 +9,7 @@ from splent_framework.services.BaseService import BaseService
 from app.features.dataset.models import Author, DSMetaData, PublicationType
 from app.features.dataset.services import calculate_checksum_and_size
 from app.features.hubfile.models import Hubfile
+from app.features.workflow.metadata import WorkflowMetadataExtractor
 from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
 from app.features.workflow.package import PackageIssue, PackageValidator
 from app.features.workflow.repositories import WorkflowDatasetRepository, WorkflowVersionRepository
@@ -144,3 +145,6 @@ class WorkflowDatasetService(BaseService):
                 shutil.rmtree(destination, ignore_errors=True)
             logger.exception("Could not persist workflow package: %s", exc)
             return None, [PackageIssue("No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo.")]
+
+    def extract_metadata(self, text: str):
+        return WorkflowMetadataExtractor().extract_text(text)

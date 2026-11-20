@@ -39,8 +39,10 @@ def upload():
 @workflow_bp.route("/workflow/<int:dataset_id>")
 def detail(dataset_id):
     workflow = workflow_service.get_or_404(dataset_id)
+    versions = workflow_service.versions_for(dataset_id)
     return render_template(
         "workflow/detail.html",
         workflow=workflow,
-        versions=workflow_service.versions_for(dataset_id),
+        versions=versions,
+        workflow_metadata=versions[0].workflow_metadata if versions else None,
     )
