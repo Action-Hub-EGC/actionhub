@@ -1,3 +1,4 @@
+import hashlib
 import os
 
 from flask import Blueprint, Flask, jsonify, request
@@ -54,6 +55,52 @@ def create_app(store: DepositionStore | None = None) -> Flask:
         if deposition is None:
             return jsonify({"message": "Deposition not found"}), 404
         return jsonify(deposition), 200
+
+    @depositions.post("/<int:deposition_id>/files")
+    def upload_file(deposition_id: int):
+        deposition = app_store.get(deposition_id)
+        if deposition is None:
+            return jsonify({"message": "Deposition not found"}), 404
+        if deposition["state"] == "done":
+            return jsonify({"message": "Cannot upload files to a published deposition"}), 400
+
+        uploaded_file = request.files.get("file")
+        if uploaded_file is None:
+            return jsonify({"message": "file is required"}), 400
+
+        filename = request.form.get("name") or uploaded_file.filename
+        if not filename:
+            return jsonify({"message": "file name is required"}), 400
+
+        digest = hashlib.md5()
+        size = 0
+        while chunk := uploaded_file.stream.read(1024 * 1024):
+            digest.update(chunk)
+            size += len(chunk)
+
+        file_data = {
+            "id": len(deposition["files"]) + 1,
+            "filename": filename,
+            "filesize": size,
+            "checksum": f"md5:{digest.hexdigest()}",
+        }
+        app_store.update(deposition_id, files=[*deposition["files"], file_data])
+        return jsonify(file_data), 201
+
+    @depositions.post("/<int:deposition_id>/actions/publish")
+    def publish_deposition(deposition_id: int):
+        deposition = app_store.get(deposition_id)
+        if deposition is None:
+            return jsonify({"message": "Deposition not found"}), 404
+        if deposition["state"] == "done":
+            return jsonify(deposition), 202
+
+        published = app_store.update(
+            deposition_id,
+            state="done",
+            doi=f"10.5072/fakenodo.{deposition_id}",
+        )
+        return jsonify(published), 202
 
     @depositions.delete("/<int:deposition_id>")
     def delete_deposition(deposition_id: int):

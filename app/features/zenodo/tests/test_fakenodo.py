@@ -1,3 +1,6 @@
+import hashlib
+import io
+
 import pytest
 
 from fakenodo.app import create_app
@@ -106,6 +109,46 @@ def test_get_deposition(fakenodo_client):
 
     assert response.status_code == 200
     assert response.get_json() == created
+
+
+def test_upload_file_stores_name_size_and_checksum_and_lists_it(fakenodo_client):
+    created = fakenodo_client.post(
+        DEPOSITIONS_URL,
+        json={"metadata": {"title": "Dataset"}},
+    ).get_json()
+    content = b"feature data"
+
+    upload = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"name": "dataset.uvl", "file": (io.BytesIO(content), "ignored-name.uvl")},
+        content_type="multipart/form-data",
+    )
+
+    assert upload.status_code == 201
+    assert upload.get_json() == {
+        "id": 1,
+        "filename": "dataset.uvl",
+        "filesize": len(content),
+        "checksum": f"md5:{hashlib.md5(content).hexdigest()}",
+    }
+
+    deposition = fakenodo_client.get(f"{DEPOSITIONS_URL}/{created['id']}").get_json()
+    assert deposition["files"] == [upload.get_json()]
+
+
+def test_upload_file_is_rejected_after_publishing(fakenodo_client):
+    created = fakenodo_client.post(DEPOSITIONS_URL).get_json()
+    publish = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish")
+    assert publish.status_code == 202
+
+    response = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"file": (io.BytesIO(b"late file"), "late.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "Cannot upload files to a published deposition"}
 
 
 def test_get_unknown_deposition_returns_404(fakenodo_client):
