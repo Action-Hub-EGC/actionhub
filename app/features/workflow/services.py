@@ -9,10 +9,17 @@ from splent_framework.services.BaseService import BaseService
 from app.features.dataset.models import Author, DSMetaData, PublicationType
 from app.features.dataset.services import calculate_checksum_and_size
 from app.features.hubfile.models import Hubfile
-from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
+from app.features.workflow.models import (
+    ValidationStatus,
+    WorkflowDataset,
+    WorkflowVersion,
+)
 from app.features.workflow.package import PackageIssue, PackageValidator
-from app.features.workflow.repositories import WorkflowDatasetRepository, WorkflowVersionRepository
-from app.features.workflow.validation import L1Validator
+from app.features.workflow.repositories import (
+    WorkflowDatasetRepository,
+    WorkflowVersionRepository,
+)
+from app.features.workflow.validation import L1Validator, L2Validator
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +49,40 @@ class WorkflowDatasetService(BaseService):
         """
         result = L1Validator().validate_text(version.workflow_yaml)
         workflow = version.workflow_dataset
-        workflow.validation_status = ValidationStatus.VALIDATED if result.valid else ValidationStatus.FAILED
+        status = (
+            ValidationStatus.VALIDATED
+            if result.valid
+            else ValidationStatus.FAILED
+        )
+        workflow.validation_status = status
         self.repository.session.commit()
         return result
 
-    def upload_package(self, file_storage, current_user) -> tuple[WorkflowDataset | None, list[PackageIssue]]:
+    def validate_l2_text(self, text: str):
+        return L2Validator().validate_text(text)
+
+    def validate_l2_version(self, version):
+        """Run L1 + L2 on a version and update the parent workflow status.
+
+        L2 is blocking: a schema failure sets ``validation_status='failed'``
+        and blocks transition to ``validated``.
+        """
+        result = L2Validator().validate_text(version.workflow_yaml)
+        workflow = version.workflow_dataset
+        status = (
+            ValidationStatus.VALIDATED
+            if result.valid
+            else ValidationStatus.FAILED
+        )
+        workflow.validation_status = status
+        self.repository.session.commit()
+        return result
+
+    def upload_package(
+        self,
+        file_storage,
+        current_user,
+    ) -> tuple[WorkflowDataset | None, list[PackageIssue]]:
         """Validate and persist a workflow ``.zip`` package.
 
         Nothing is written to the database until the whole package passes
@@ -80,7 +116,11 @@ class WorkflowDatasetService(BaseService):
                     )
                 )
 
-            manifest_json = json.dumps(manifest, ensure_ascii=False, sort_keys=True)
+            manifest_json = json.dumps(
+                manifest,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
             dataset = WorkflowDataset(
                 user_id=current_user.id,
                 ds_meta_data_id=metadata.id,
@@ -132,4 +172,8 @@ class WorkflowDatasetService(BaseService):
             if destination:
                 shutil.rmtree(destination, ignore_errors=True)
             logger.exception("Could not persist workflow package: %s", exc)
-            return None, [PackageIssue("No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo.")]
+            msg = (
+                "No se pudo guardar el paquete. "
+                "Revisa los datos e inténtalo de nuevo."
+            )
+            return None, [PackageIssue(msg)]
