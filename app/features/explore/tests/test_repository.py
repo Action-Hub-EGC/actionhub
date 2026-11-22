@@ -89,7 +89,7 @@ def _seed_corpus():
         description="vehicle variability",
         author_name="Bob Roe",
         tags="automotive",
-        created_at=datetime(2024, 2, 1),
+        created_at=datetime(2024, 2, 1, 15, 30),
         publication_type=PublicationType.BOOK,
     )
     _make_dataset(
@@ -244,3 +244,37 @@ def test_author_filter_is_case_insensitive_and_combines_with_the_query(test_app,
         assert _titles(repository.filter("", author="ALICE")) == ["Smart Home"]
         assert _titles(repository.filter("home", author="alice")) == ["Smart Home"]
         assert _titles(repository.filter("home", author="bob")) == []
+
+
+def test_date_range_is_inclusive_and_can_be_open(test_app, clean_database):
+    with test_app.app_context():
+        _seed_corpus()
+        _make_dataset("Next Day", created_at=datetime(2024, 2, 2), author_name="Boundary")
+        repository = ExploreRepository()
+
+        assert _titles(repository.filter("", start_date="2024-01-15", end_date="2024-02-15")) == [
+            "Next Day",
+            "Car Configurator",
+        ]
+        assert _titles(repository.filter("", start_date="2024-02-01")) == [
+            "Home Banking",
+            "Next Day",
+            "Car Configurator",
+        ]
+        assert _titles(repository.filter("", end_date="2024-02-01")) == [
+            "Car Configurator",
+            "Smart Home",
+        ]
+
+
+def test_invalid_or_inverted_dates_are_handled(test_app, clean_database):
+    with test_app.app_context():
+        _seed_corpus()
+        repository = ExploreRepository()
+
+        assert _titles(repository.filter("", start_date="not-a-date")) == [
+            "Home Banking",
+            "Car Configurator",
+            "Smart Home",
+        ]
+        assert _titles(repository.filter("", start_date="2024-03-01", end_date="2024-01-01")) == []
