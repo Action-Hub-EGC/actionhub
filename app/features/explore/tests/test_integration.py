@@ -6,7 +6,7 @@ import pytest
 
 from app import db
 from app.features.auth.models import User
-from app.features.dataset.models import Author, DataSet, DSMetaData, PublicationType
+from app.features.dataset.models import Author, DataSet, DSDownloadRecord, DSMetaData, DSViewRecord, PublicationType
 from app.features.featuremodel.models import FeatureModel, FMMetaData
 
 pytestmark = pytest.mark.integration
@@ -171,3 +171,19 @@ def test_search_without_a_json_body_behaves_like_an_unfiltered_search(test_app, 
         "Car Configurator",
         "Smart Home",
     ]
+
+
+def test_search_includes_the_counts_of_each_dataset(test_app, test_client):
+    _seed_corpus(test_app)
+    with test_app.app_context():
+        smart_home = DSMetaData.query.filter_by(title="Smart Home").one().data_set
+        db.session.add(DSDownloadRecord(dataset_id=smart_home.id, download_cookie="cookie-a"))
+        db.session.add(DSViewRecord(dataset_id=smart_home.id, view_cookie="cookie-a"))
+        db.session.add(DSViewRecord(dataset_id=smart_home.id, view_cookie="cookie-b"))
+        db.session.commit()
+
+    results = test_client.post("/explore", json={}).get_json()
+
+    counts = {dataset["title"]: dataset["counts"] for dataset in results}
+    assert counts["Smart Home"] == {"downloads": 1, "views": 2}
+    assert counts["Car Configurator"] == {"downloads": 0, "views": 0}

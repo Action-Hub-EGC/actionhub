@@ -40,6 +40,14 @@
 
                     <dt class="col-sm-4">Creado</dt>
                     <dd class="col-sm-8">{{ workflow.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+
+                    <dt class="col-sm-4">Actividad</dt>
+                    <dd class="col-sm-8" id="workflow-counts"
+                        title="Únicas por usuario o visitante anónimo, navegador y dataset: los clics repetidos no cuentan.">
+                        <span id="workflow-views">{{ counts.views }}</span> visitas ·
+                        <span id="workflow-downloads">{{ counts.downloads }}</span> descargas
+                        <span class="text-secondary">(navegadores únicos)</span>
+                    </dd>
                 </dl>
             </div>
         </div>

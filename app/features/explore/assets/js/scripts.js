@@ -133,6 +133,21 @@ function send_query() {
 
                                     </div>
 
+                                    <div class="row mb-2">
+
+                                        <div class="col-md-4 col-12">
+                                            <span class=" text-secondary">
+                                                Activity
+                                            </span>
+                                        </div>
+                                        <div class="col-md-8 col-12">
+                                            <p class="p-0 m-0" title="Unique per user or anonymous visitor, browser and dataset: repeated clicks are not counted.">
+                                                ${dataset.counts.views} views &middot; ${dataset.counts.downloads} downloads (unique browsers)
+                                            </p>
+                                        </div>
+
+                                    </div>
+
                                     <div class="row">
 
                                         <div class="col-md-4 col-12">

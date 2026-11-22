@@ -2,9 +2,15 @@ from datetime import datetime
 from enum import Enum
 
 from flask import request
+from sqlalchemy import Computed
 from sqlalchemy import Enum as SQLAlchemyEnum
 
 from app import db
+
+# ``user_id`` is NULL for anonymous visitors, and MariaDB never treats two
+# NULLs as equal in a unique index. The records deduplicate on this stored
+# column instead: 0 stands for "anonymous", which no real user id can be.
+USER_KEY_EXPRESSION = "COALESCE(user_id, 0)"
 
 
 class PublicationType(Enum):
@@ -166,8 +172,15 @@ DataSet = UVLDataset
 
 
 class DSDownloadRecord(db.Model):
+    """One row per (user or anonymous, dataset, browser cookie): decision #66."""
+
+    __table_args__ = (
+        db.UniqueConstraint("user_key", "dataset_id", "download_cookie", name="uq_ds_download_record_once"),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    user_key = db.Column(db.Integer, Computed(USER_KEY_EXPRESSION, persisted=True))
     dataset_id = db.Column(db.Integer, db.ForeignKey("data_set.id"))
     download_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     download_cookie = db.Column(db.String(36), nullable=False)  # Assuming UUID4 strings
@@ -182,8 +195,13 @@ class DSDownloadRecord(db.Model):
 
 
 class DSViewRecord(db.Model):
+    """One row per (user or anonymous, dataset, browser cookie), like downloads."""
+
+    __table_args__ = (db.UniqueConstraint("user_key", "dataset_id", "view_cookie", name="uq_ds_view_record_once"),)
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    user_key = db.Column(db.Integer, Computed(USER_KEY_EXPRESSION, persisted=True))
     dataset_id = db.Column(db.Integer, db.ForeignKey("data_set.id"))
     view_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     view_cookie = db.Column(db.String(36), nullable=False)  # Assuming UUID4 strings

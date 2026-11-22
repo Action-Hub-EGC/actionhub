@@ -7,7 +7,7 @@ import pytest
 
 from app import db
 from app.features.auth.repositories import UserRepository
-from app.features.dataset.models import DSMetaData, PublicationType
+from app.features.dataset.models import DSMetaData, DSViewRecord, PublicationType
 from app.features.hubfile.models import Hubfile
 from app.features.workflow.models import WorkflowDataset, WorkflowVersion
 from app.features.workflow.tests.test_package import MANIFEST, make_zip
@@ -119,6 +119,22 @@ def test_detail_renders_versions_and_files(test_client):
     assert b"Versiones" in response.data
     assert b"actionhub.yaml" in response.data
     assert b"1 archivos" in response.data
+
+
+def test_detail_records_one_view_per_browser_and_shows_the_counts(test_client):
+    with test_client.application.app_context():
+        workflow_id = make_workflow(make_user("workflow-counts@example.com").id, title="Counted workflow").id
+
+    first = test_client.get(f"/workflow/{workflow_id}")
+    # The test client sends back the view cookie: same browser, no new view.
+    second = test_client.get(f"/workflow/{workflow_id}").get_data(as_text=True)
+
+    assert "view_cookie" in first.headers.get("Set-Cookie", "")
+    assert '<span id="workflow-views">1</span> visitas' in second
+    assert '<span id="workflow-downloads">0</span> descargas' in second
+    assert "los clics repetidos no cuentan" in second
+    with test_client.application.app_context():
+        assert DSViewRecord.query.filter_by(dataset_id=workflow_id).count() == 1
 
 
 def test_upload_valid_package_redirects_and_persists(test_client, monkeypatch, tmp_path):
