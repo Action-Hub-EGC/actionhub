@@ -27,6 +27,8 @@ def _make_dataset(
     title,
     description="a description",
     author_name="Anonymous Author",
+    author_affiliation="Some University",
+    author_orcid=None,
     tags="",
     created_at=None,
     publication_type=PublicationType.JOURNAL_ARTICLE,
@@ -42,7 +44,14 @@ def _make_dataset(
     )
     db.session.add(ds_meta_data)
     db.session.flush()
-    db.session.add(Author(name=author_name, affiliation="Some University", ds_meta_data_id=ds_meta_data.id))
+    db.session.add(
+        Author(
+            name=author_name,
+            affiliation=author_affiliation,
+            orcid=author_orcid,
+            ds_meta_data_id=ds_meta_data.id,
+        )
+    )
     dataset = DataSet(
         user_id=_owner().id,
         ds_meta_data_id=ds_meta_data.id,
@@ -201,3 +210,37 @@ def test_tags_combine_with_the_query(test_app, clean_database):
         # "home" alone matches two datasets; the tag narrows them to one.
         assert _titles(repository.filter("home")) == ["Home Banking", "Smart Home"]
         assert _titles(repository.filter("home", tags=["iot"])) == ["Smart Home"]
+
+
+def test_author_filter_matches_name_affiliation_and_orcid(test_app, clean_database):
+    with test_app.app_context():
+        _make_dataset(
+            "Alpha",
+            author_name="Alice Doe",
+            author_affiliation="University of Alpha",
+            author_orcid="0000-0001-0001",
+            created_at=datetime(2024, 1, 1),
+        )
+        _make_dataset(
+            "Beta",
+            author_name="Bob Roe",
+            author_affiliation="Beta Institute",
+            author_orcid="0000-0002-0002",
+            created_at=datetime(2024, 2, 1),
+        )
+        repository = ExploreRepository()
+
+        assert _titles(repository.filter("", author="alice")) == ["Alpha"]
+        assert _titles(repository.filter("", author="Beta Institute")) == ["Beta"]
+        assert _titles(repository.filter("", author="0000-0002-0002")) == ["Beta"]
+        assert _titles(repository.filter("", author="  ")) == ["Beta", "Alpha"]
+
+
+def test_author_filter_is_case_insensitive_and_combines_with_the_query(test_app, clean_database):
+    with test_app.app_context():
+        _seed_corpus()
+        repository = ExploreRepository()
+
+        assert _titles(repository.filter("", author="ALICE")) == ["Smart Home"]
+        assert _titles(repository.filter("home", author="alice")) == ["Smart Home"]
+        assert _titles(repository.filter("home", author="bob")) == []
