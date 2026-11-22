@@ -2,8 +2,9 @@ import os
 
 from splent_framework.services.BaseService import BaseService
 
+from app import db
 from app.features.auth.models import User
-from app.features.dataset.models import DataSet
+from app.features.dataset.models import BaseDataset
 from app.features.hubfile.models import Hubfile
 from app.features.hubfile.repositories import (
     HubfileDownloadRecordRepository,
@@ -19,9 +20,17 @@ class HubfileService(BaseService):
         self.hubfile_download_record_repository = HubfileDownloadRecordRepository()
 
     def get_owner_user_by_hubfile(self, hubfile: Hubfile) -> User:
+        if hubfile.workflow_version_id:
+            dataset = self.get_dataset_by_hubfile(hubfile)
+            return db.session.get(User, dataset.user_id) if dataset else None
         return self.repository.get_owner_user_by_hubfile(hubfile)
 
-    def get_dataset_by_hubfile(self, hubfile: Hubfile) -> DataSet:
+    def get_dataset_by_hubfile(self, hubfile: Hubfile) -> BaseDataset:
+        if hubfile.workflow_version_id:
+            from app.features.workflow.models import WorkflowVersion
+
+            version = db.session.get(WorkflowVersion, hubfile.workflow_version_id)
+            return db.session.get(BaseDataset, version.workflow_dataset_id) if version else None
         return self.repository.get_dataset_by_hubfile(hubfile)
 
     def get_path_by_hubfile(self, hubfile: Hubfile) -> str:
@@ -48,11 +57,11 @@ class HubfileService(BaseService):
         return os.path.dirname(self.get_path_by_hubfile(hubfile))
 
     def read_text(self, hubfile: Hubfile) -> str | None:
-        """Read the hubfile's UVL content. Returns ``None`` if the file is missing."""
+        """Read the file's text content. Returns ``None`` if the file is missing."""
         path = self.get_path_by_hubfile(hubfile)
         if not os.path.exists(path):
             return None
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
 

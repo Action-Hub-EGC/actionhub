@@ -38,10 +38,10 @@ jobs:
         run: pip install ruff black==26.3.1
 
       - name: Lint with ruff
-        run: ruff check app rosemary
+        run: ruff check app rosemary fakenodo
 
       - name: Check formatting with black
-        run: black --check app rosemary
+        run: black --check app rosemary fakenodo
 
   test:
     name: Pytest + coverage
@@ -89,11 +89,13 @@ jobs:
           pip install -r requirements.txt
           pip install -e ./rosemary
 
-      # Selenium tests need a browser grid, so they are left out of CI
+      # Selenium tests need a browser grid, so they are left out of CI.
+      # fakenodo's unit tests live in app/features/zenodo/tests and run here
+      # too; --cov=fakenodo makes the service count in the coverage report.
       - name: Run tests with coverage
         run: >-
           pytest --ignore-glob='*selenium*'
-          --cov=app --cov-report=term-missing --cov-report=xml
+          --cov=app --cov=fakenodo --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage report
         if: always()
@@ -101,6 +103,77 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  fakenodo:
+    name: Fakenodo image
+    runs-on: ubuntu-24.04
+    needs: lint
+
+    env:
+      FAKENODO_URL: http://localhost:8000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # The image docker-compose.dev.yml runs. The unit tests cover the code in
+      # the test job; this job checks what they cannot: that the image builds,
+      # boots, answers over HTTP and keeps its data in the /data volume.
+      - name: Build fakenodo image
+        run: docker build -t fakenodo:ci -f docker/images/Dockerfile.fakenodo .
+
+      - name: Smoke test the container
+        shell: bash
+        run: |
+          api="$FAKENODO_URL/api/deposit/depositions"
+          body="$RUNNER_TEMP/fakenodo-body.json"
+
+          start() {
+            docker run -d --name fakenodo_ci -p 8000:8000 -v fakenodo_ci_data:/data fakenodo:ci
+          }
+
+          # Until the server listens, docker's port proxy accepts the connection
+          # and closes it; --retry-all-errors retries that "empty reply" too.
+          wait_healthy() {
+            curl -fsS --retry 20 --retry-delay 1 --retry-all-errors "$FAKENODO_URL/health" \
+              | jq -e '.status == "ok"'
+          }
+
+          # call <expected status> <curl args...>: prints the body on success,
+          # fails with the status and body on stderr otherwise.
+          call() {
+            local expected=$1 status
+            shift
+            status=$(curl -sS -o "$body" -w '%{http_code}' "$@")
+            if [ "$status" != "$expected" ]; then
+              echo "$* returned $status, expected $expected" >&2
+              cat "$body" >&2
+              return 1
+            fi
+            cat "$body"
+          }
+
+          start
+          wait_healthy
+
+          id=$(call 201 -X POST -H 'Content-Type: application/json' \
+            -d '{"metadata": {"title": "CI smoke test"}}' "$api" | jq -er '.id')
+          call 200 "$api/$id" | jq -e '.metadata.title == "CI smoke test" and .state == "unsubmitted"'
+          call 200 "$api" | jq -e --argjson id "$id" 'any(.[]; .id == $id)'
+
+          # A new container on the same volume must still see the deposition,
+          # as fakenodo_data does in development across "docker compose down".
+          docker rm -f fakenodo_ci
+          start
+          wait_healthy
+          call 200 "$api/$id" | jq -e '.metadata.title == "CI smoke test"'
+
+          call 204 -X DELETE "$api/$id"
+          call 404 "$api/$id" | jq -e '.message == "Deposition not found"'
+
+      - name: Show fakenodo logs
+        if: failure()
+        run: docker logs fakenodo_ci
 
   build:
     name: Build Docker image

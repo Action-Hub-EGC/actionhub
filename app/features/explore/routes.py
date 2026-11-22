@@ -13,6 +13,7 @@ def index():
         "explore/index.html",
         form=ExploreForm(),
         query=request.args.get("query", ""),
+        author=request.args.get("author", ""),
     )
 
 
