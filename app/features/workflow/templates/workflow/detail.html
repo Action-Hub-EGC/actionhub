@@ -50,13 +50,22 @@
                 {% if versions %}
                 <ul class="list-group list-group-flush">
                     {% for version in versions %}
-                    <li class="list-group-item d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>Versión {{ loop.revindex }}</strong>
-                            <br>
-                            <small class="text-muted">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                    <li class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Versión {{ loop.revindex }}</strong>
+                                <br>
+                                <small class="text-muted">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</small>
+                            </div>
+                            <span class="badge bg-light text-dark">{{ version.files|length }} archivos</span>
                         </div>
-                        <span class="badge bg-light text-dark">{{ version.files|length }} archivos</span>
+                        {% if version.files %}
+                        <ul class="mt-2 mb-0 small text-secondary">
+                            {% for file in version.files %}
+                            <li>{{ file.name }} · {{ file.get_formatted_size() }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
                     </li>
                     {% endfor %}
                 </ul>
