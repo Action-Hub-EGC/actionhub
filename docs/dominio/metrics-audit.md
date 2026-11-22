@@ -224,6 +224,8 @@ Los registros no son hits. Son **una fila por cookie, recurso y usuario**. Conse
 
 Por tanto, las métricas se nombran `visits` y `downloads`, no `page_views` ni `requests`. En la interfaz se puede aclarar “visitantes únicos por navegador” cuando se muestre el dato agregado.
 
+**Decisión #66 (22/11/2026):** el contador de descargas muestra **descargas únicas por usuario autenticado o anónimo, navegador y dataset**. Se mantiene `DSDownloadRecord` y su deduplicación por `(user_id, dataset_id, download_cookie)`; #67 reutiliza esos registros y añadirá la etiqueta y el tooltip. La decisión completa está en [`ACTA-2026-08`](../diario/ACTA-2026-08.md).
+
 ### 6.4. Registros sin recurso vivo
 
 `dataset_id` y `file_id` son nullable, pero las claves foráneas de MariaDB **impiden** borrar un workflow o un archivo que todavía tenga registros: `DataSet.delete()` (`app/features/dataset/models.py:83-85`) falla con `IntegrityError` si hay actividad, porque no existe `ON DELETE CASCADE`. En la práctica no deberían existir huérfanos. Sí pueden existir filas con `dataset_id` o `file_id` a `NULL` si una escritura no valida el recurso.

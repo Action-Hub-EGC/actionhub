@@ -13,6 +13,9 @@ def index():
         "explore/index.html",
         form=ExploreForm(),
         query=request.args.get("query", ""),
+        author=request.args.get("author", ""),
+        start_date=request.args.get("start_date", ""),
+        end_date=request.args.get("end_date", ""),
     )
 
 

@@ -55,6 +55,36 @@
                             </div>
                         </div>
 
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="form-label" for="author">
+                                    Filter by author, affiliation or ORCID
+                                </label>
+                                <input class="form-control" id="author" name="author" type="text"
+                                       value="{{ author }}" placeholder="Name, affiliation or ORCID">
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="start_date">
+                                    From date
+                                </label>
+                                <input class="form-control" id="start_date" name="start_date" type="date"
+                                       value="{{ start_date }}">
+                            </div>
+                        </div>
+
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="end_date">
+                                    To date
+                                </label>
+                                <input class="form-control" id="end_date" name="end_date" type="date"
+                                       value="{{ end_date }}">
+                            </div>
+                        </div>
+
                         <div class="col-lg-6">
                             <div class="mb-3">
                                 <label class="form-label" for="publication_type">Filter by publication

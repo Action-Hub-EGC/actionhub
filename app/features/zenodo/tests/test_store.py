@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from fakenodo.store import DepositionStore
@@ -17,6 +19,7 @@ def test_create_and_get_persisted_deposition(tmp_path):
     assert deposition == {
         "id": 42,
         "conceptrecid": 42,
+        "conceptdoi": None,
         "doi": None,
         "state": "unsubmitted",
         "metadata": {"title": "Stable DOI"},
@@ -94,3 +97,66 @@ def test_rejects_invalid_state(tmp_path):
 
     with pytest.raises(ValueError, match="unsubmitted.*done"):
         store.create(state="draft")
+
+
+def test_publish_keeps_existing_concept_doi(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+    store.create(
+        2,
+        conceptrecid=1,
+        conceptdoi="10.5072/fakenodo.concept.1",
+        files=[{"filename": "v2.uvl"}],
+        version=2,
+    )
+
+    published = store.publish(2)
+
+    assert published["doi"] == "10.5072/fakenodo.2"
+    assert published["conceptdoi"] == "10.5072/fakenodo.concept.1"
+
+
+def test_publish_returns_none_for_unknown_deposition(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+
+    assert store.publish(999) is None
+
+
+def test_store_adds_conceptdoi_column_to_old_databases(tmp_path):
+    database = tmp_path / "fakenodo.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute("""
+            CREATE TABLE depositions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conceptrecid INTEGER,
+                doi TEXT,
+                state TEXT NOT NULL CHECK (state IN ('unsubmitted', 'done')),
+                metadata TEXT NOT NULL,
+                files TEXT NOT NULL,
+                version INTEGER NOT NULL DEFAULT 1
+            )
+            """)
+        connection.execute(
+            "INSERT INTO depositions (id, conceptrecid, state, metadata, files) VALUES (1, 1, 'unsubmitted', '{}', ?)",
+            ('[{"filename": "old.uvl"}]',),
+        )
+    connection.close()
+
+    store = DepositionStore(database)
+
+    assert store.get(1)["conceptdoi"] is None
+    assert store.publish(1)["conceptdoi"] == "10.5072/fakenodo.concept.1"
+
+
+def test_new_version_returns_none_for_unknown_deposition(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+
+    assert store.new_version(999) is None
+
+
+def test_list_versions_returns_only_the_concept_in_version_order(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+    store.create(1, state="done", files=[{"checksum": "md5:a"}])
+    store.create(2, conceptrecid=1, version=2)
+    store.create(3)
+
+    assert [deposition["id"] for deposition in store.list_versions(1)] == [1, 2]

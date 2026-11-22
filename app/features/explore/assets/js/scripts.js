@@ -35,9 +35,14 @@ function send_query() {
             const searchCriteria = {
                 csrf_token: csrfToken,
                 query: document.querySelector('#query').value,
+                author: document.querySelector('#author').value,
+                start_date: document.querySelector('#start_date').value,
+                end_date: document.querySelector('#end_date').value,
                 publication_type: document.querySelector('#publication_type').value,
                 sorting: document.querySelector('[name="sorting"]:checked').value,
             };
+
+            sync_url(searchCriteria);
 
             console.log(document.querySelector('#publication_type').value);
 
@@ -162,6 +167,22 @@ function send_query() {
     });
 }
 
+function sync_url(searchCriteria) {
+    const params = new URLSearchParams();
+    if (searchCriteria.query) params.set('query', searchCriteria.query);
+    if (searchCriteria.author) params.set('author', searchCriteria.author);
+    if (searchCriteria.start_date) params.set('start_date', searchCriteria.start_date);
+    if (searchCriteria.end_date) params.set('end_date', searchCriteria.end_date);
+    if (searchCriteria.publication_type && searchCriteria.publication_type !== 'any') {
+        params.set('publication_type', searchCriteria.publication_type);
+    }
+    if (searchCriteria.sorting && searchCriteria.sorting !== 'newest') {
+        params.set('sorting', searchCriteria.sorting);
+    }
+    const queryString = params.toString();
+    window.history.replaceState({}, '', queryString ? `/explore?${queryString}` : '/explore');
+}
+
 function formatDate(dateString) {
     const options = {day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: 'numeric'};
     const date = new Date(dateString);
@@ -199,6 +220,14 @@ function clearFilters() {
     queryInput.value = "";
     // queryInput.dispatchEvent(new Event('input', {bubbles: true}));
 
+    let authorInput = document.querySelector('#author');
+    if (authorInput) {
+        authorInput.value = "";
+    }
+
+    document.querySelector('#start_date').value = "";
+    document.querySelector('#end_date').value = "";
+
     // Reset the publication type to its default value
     let publicationTypeSelect = document.querySelector('#publication_type');
     publicationTypeSelect.value = "any"; // replace "any" with whatever your default value is
@@ -219,18 +248,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (!on_explore_page()) return;
 
-    let urlParams = new URLSearchParams(window.location.search);
-    let queryParam = urlParams.get('query');
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryParam = urlParams.get('query');
+    const authorParam = urlParams.get('author');
+    const startDateParam = urlParams.get('start_date');
+    const endDateParam = urlParams.get('end_date');
+    const publicationTypeParam = urlParams.get('publication_type');
+    const sortingParam = urlParams.get('sorting');
 
     if (queryParam && queryParam.trim() !== '') {
-
-        const queryInput = document.getElementById('query');
-        queryInput.value = queryParam
-        queryInput.dispatchEvent(new Event('input', {bubbles: true}));
-        console.log("throw event");
-
-    } else {
-        const queryInput = document.getElementById('query');
-        queryInput.dispatchEvent(new Event('input', {bubbles: true}));
+        document.getElementById('query').value = queryParam;
     }
+    if (authorParam && authorParam.trim() !== '') {
+        document.getElementById('author').value = authorParam;
+    }
+    if (startDateParam) {
+        document.getElementById('start_date').value = startDateParam;
+    }
+    if (endDateParam) {
+        document.getElementById('end_date').value = endDateParam;
+    }
+    if (publicationTypeParam) {
+        document.getElementById('publication_type').value = publicationTypeParam;
+    }
+    if (sortingParam === 'oldest') {
+        document.querySelector('[name="sorting"][value="oldest"]').checked = true;
+        document.querySelector('[name="sorting"][value="newest"]').checked = false;
+    }
+
+    document.getElementById('query').dispatchEvent(new Event('input', {bubbles: true}));
 });

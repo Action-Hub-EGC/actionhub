@@ -82,6 +82,24 @@ def test_explore_page_renders_the_search_form(test_client):
     assert b"<b>Explore</b>" in response.data
     assert b'name="query"' in response.data
     assert b'name="publication_type"' in response.data
+    assert b'name="author"' in response.data
+    assert b'name="start_date"' in response.data
+    assert b'name="end_date"' in response.data
+
+
+def test_explore_page_reads_the_author_from_the_url(test_client):
+    response = test_client.get("/explore?author=Alice")
+
+    assert response.status_code == 200
+    assert b'value="Alice"' in response.data
+
+
+def test_explore_page_reads_the_date_range_from_the_url(test_client):
+    response = test_client.get("/explore?start_date=2024-01-01&end_date=2024-12-31")
+
+    assert response.status_code == 200
+    assert b'value="2024-01-01"' in response.data
+    assert b'value="2024-12-31"' in response.data
 
 
 def test_search_returns_only_the_matching_datasets(test_app, test_client):
@@ -113,6 +131,28 @@ def test_search_honours_sorting_and_publication_type(test_app, test_client):
 
     books = test_client.post("/explore", json={"query": "", "publication_type": "book"})
     assert [dataset["title"] for dataset in books.get_json()] == ["Car Configurator"]
+
+
+def test_search_honours_author(test_app, test_client):
+    _seed_corpus(test_app)
+
+    response = test_client.post("/explore", json={"author": "alice"})
+    assert response.status_code == 200
+    assert [dataset["title"] for dataset in response.get_json()] == ["Smart Home"]
+
+    response = test_client.post("/explore", json={"author": "Some University"})
+    assert len(response.get_json()) == 3
+
+
+def test_search_honours_the_date_range(test_app, test_client):
+    _seed_corpus(test_app)
+
+    response = test_client.post(
+        "/explore",
+        json={"start_date": "2024-01-15", "end_date": "2024-02-15"},
+    )
+    assert response.status_code == 200
+    assert [dataset["title"] for dataset in response.get_json()] == ["Car Configurator"]
 
 
 def test_search_returns_an_empty_list_when_nothing_matches(test_app, test_client):

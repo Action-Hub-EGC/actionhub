@@ -9,10 +9,11 @@ from splent_framework.services.BaseService import BaseService
 from app.features.dataset.models import Author, DSMetaData, PublicationType
 from app.features.dataset.services import calculate_checksum_and_size
 from app.features.hubfile.models import Hubfile
+from app.features.workflow.metadata import MetadataError, WorkflowMetadataExtractor
 from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
 from app.features.workflow.package import PackageIssue, PackageValidator
 from app.features.workflow.repositories import WorkflowDatasetRepository, WorkflowVersionRepository
-from app.features.workflow.validation import L1Validator
+from app.features.workflow.validation import L1Validator, L2Validator
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +36,23 @@ class WorkflowDatasetService(BaseService):
         return L1Validator().validate_text(text)
 
     def validate_l1_version(self, version):
-        """Run L1 on a version and update the parent workflow status.
+        """Run blocking validation (L1 + L2) on a version.
 
-        A failure sets ``validation_status='failed'``; only a clean result
-        moves the workflow to ``validated``.
+        Delegates to ``validate_l2_version`` so no public entry point can mark
+        a workflow as ``validated`` without passing both L1 and L2.
         """
-        result = L1Validator().validate_text(version.workflow_yaml)
+        return self.validate_l2_version(version)
+
+    def validate_l2_text(self, text: str):
+        return L2Validator().validate_text(text)
+
+    def validate_l2_version(self, version):
+        """Run L1 + L2 on a version and update the parent workflow status.
+
+        L1 and L2 are blocking: a failure in either layer sets
+        ``validation_status='failed'`` and blocks transition to ``validated``.
+        """
+        result = L2Validator().validate_text(version.workflow_yaml)
         workflow = version.workflow_dataset
         workflow.validation_status = ValidationStatus.VALIDATED if result.valid else ValidationStatus.FAILED
         self.repository.session.commit()
@@ -51,7 +63,8 @@ class WorkflowDatasetService(BaseService):
 
         Nothing is written to the database until the whole package passes
         structure, manifest and YAML checks. The workflow is stored as an
-        unpublished draft (no DOI) with ``validation_status='validated'``.
+        unpublished draft (no DOI) with ``validation_status='validated'``,
+        and its version carries the extracted workflow metadata (#17).
         """
         data = file_storage.read() if file_storage else b""
         result = PackageValidator().validate_zip(data)
@@ -95,6 +108,7 @@ class WorkflowDatasetService(BaseService):
                 workflow_dataset_id=dataset.id,
                 manifest_json=manifest_json,
                 workflow_yaml=result.workflow_yaml,
+                metadata_json=self.metadata_json_for(result.workflow_yaml),
                 created_at=datetime.utcnow(),
             )
             session.add(version)
@@ -133,3 +147,20 @@ class WorkflowDatasetService(BaseService):
                 shutil.rmtree(destination, ignore_errors=True)
             logger.exception("Could not persist workflow package: %s", exc)
             return None, [PackageIssue("No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo.")]
+
+    def extract_metadata(self, text: str):
+        return WorkflowMetadataExtractor().extract_text(text)
+
+    def metadata_json_for(self, text: str) -> str | None:
+        """Metadata (#17) of a workflow that already passed validation, as JSON.
+
+        This is the single place that computes ``WorkflowVersion.metadata_json``.
+        It must only be called on the path that has run every blocking
+        validation layer (today ``upload_package``). A document that is not a
+        workflow mapping yields ``None`` instead of an error.
+        """
+        try:
+            return self.extract_metadata(text).to_json()
+        except MetadataError:
+            logger.warning("Workflow metadata could not be extracted: not a YAML mapping")
+            return None

@@ -8,6 +8,17 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
+# DataCite test prefix: DOIs under it never resolve in doi.org.
+DOI_PREFIX = "10.5072"
+
+
+class DepositionError(ValueError):
+    """Raised when an action is not allowed in the deposition's current state."""
+
+
+class PublishError(DepositionError):
+    """Raised when a deposition cannot be published."""
+
 
 class DepositionStore:
     """Persistent SQLite store for Fakenodo depositions."""
@@ -41,6 +52,7 @@ class DepositionStore:
                 CREATE TABLE IF NOT EXISTS depositions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     conceptrecid INTEGER,
+                    conceptdoi TEXT,
                     doi TEXT,
                     state TEXT NOT NULL CHECK (state IN ('unsubmitted', 'done')),
                     metadata TEXT NOT NULL,
@@ -48,12 +60,17 @@ class DepositionStore:
                     version INTEGER NOT NULL DEFAULT 1
                 )
                 """)
+            # Stores created before the concept DOI existed lack the column.
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(depositions)")}
+            if "conceptdoi" not in columns:
+                connection.execute("ALTER TABLE depositions ADD COLUMN conceptdoi TEXT")
 
     @staticmethod
     def _row_to_deposition(row: sqlite3.Row) -> dict[str, Any]:
         return {
             "id": row["id"],
             "conceptrecid": row["conceptrecid"],
+            "conceptdoi": row["conceptdoi"],
             "doi": row["doi"],
             "state": row["state"],
             "metadata": json.loads(row["metadata"]),
@@ -66,6 +83,7 @@ class DepositionStore:
         deposition_id: int | None = None,
         *,
         conceptrecid: int | None = None,
+        conceptdoi: str | None = None,
         doi: str | None = None,
         state: str = "unsubmitted",
         metadata: dict[str, Any] | None = None,
@@ -83,10 +101,11 @@ class DepositionStore:
                 cursor = connection.execute(
                     """
                     INSERT INTO depositions
-                        (doi, state, metadata, files, version)
-                    VALUES (?, ?, ?, ?, ?)
+                        (conceptdoi, doi, state, metadata, files, version)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
+                        conceptdoi,
                         doi,
                         state,
                         json.dumps(metadata_value, ensure_ascii=False),
@@ -103,12 +122,13 @@ class DepositionStore:
                 connection.execute(
                     """
                     INSERT INTO depositions
-                        (id, conceptrecid, doi, state, metadata, files, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (id, conceptrecid, conceptdoi, doi, state, metadata, files, version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         deposition_id,
                         conceptrecid if conceptrecid is not None else deposition_id,
+                        conceptdoi,
                         doi,
                         state,
                         json.dumps(metadata_value, ensure_ascii=False),
@@ -135,9 +155,19 @@ class DepositionStore:
     def all(self) -> list[dict[str, Any]]:
         return self.list()
 
+    def list_versions(self, conceptrecid: int) -> list[dict[str, Any]]:
+        """Return every deposition of a concept, oldest version first."""
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM depositions WHERE conceptrecid = ? ORDER BY version, id",
+                (conceptrecid,),
+            ).fetchall()
+        return [self._row_to_deposition(row) for row in rows]
+
     def update(self, deposition_id: int, **changes: Any) -> dict[str, Any] | None:
         allowed = {
             "conceptrecid": "conceptrecid",
+            "conceptdoi": "conceptdoi",
             "doi": "doi",
             "state": "state",
             "metadata": "metadata",
@@ -174,6 +204,75 @@ class DepositionStore:
             if cursor.rowcount == 0:
                 return None
         return self.get(deposition_id)
+
+    def publish(self, deposition_id: int) -> dict[str, Any] | None:
+        """Move a deposition to ``done`` and assign it a fake DOI.
+
+        The DOI is ``10.5072/fakenodo.<id>``, unique because the id is. The
+        concept DOI is set only on the first publish of the concept; later
+        versions inherit it. Returns ``None`` if the deposition does not exist
+        and raises ``PublishError`` if it is already published, has no files
+        or, as Zenodo does, has the same files as a published version of its
+        concept. The check and the update share the store lock, so two
+        concurrent publishes cannot both succeed.
+        """
+        with self._lock:
+            deposition = self.get(deposition_id)
+            if deposition is None:
+                return None
+            if deposition["state"] == "done":
+                raise PublishError("Deposition is already published")
+            if not deposition["files"]:
+                raise PublishError("Minimum one file must be provided.")
+
+            content = self._files_content(deposition["files"])
+            for other in self.list_versions(deposition["conceptrecid"]):
+                if other["state"] == "done" and self._files_content(other["files"]) == content:
+                    raise PublishError("New version's files must differ from all previous versions.")
+
+            changes: dict[str, Any] = {
+                "state": "done",
+                "doi": f"{DOI_PREFIX}/fakenodo.{deposition_id}",
+            }
+            if not deposition["conceptdoi"]:
+                changes["conceptdoi"] = f"{DOI_PREFIX}/fakenodo.concept.{deposition['conceptrecid']}"
+            return self.update(deposition_id, **changes)
+
+    @staticmethod
+    def _files_content(files: list[dict[str, Any]]) -> list[str]:
+        """What identifies a set of files: their checksums, ignoring order."""
+        return sorted(str(file.get("checksum") or file.get("filename")) for file in files)
+
+    def new_version(self, deposition_id: int) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """Create a draft for the next version of a published deposition.
+
+        The draft shares ``conceptrecid`` and ``conceptdoi``, has no DOI until
+        it is published and starts with the metadata and files of the latest
+        published version, so newversion on an old version still builds on the
+        newest one. A concept has at most one draft: if it already exists, it
+        is returned instead of creating another. Returns ``(source, draft)``,
+        or ``None`` if the deposition does not exist, and raises
+        ``DepositionError`` if it is not published.
+        """
+        with self._lock:
+            source = self.get(deposition_id)
+            if source is None:
+                return None
+            if source["state"] != "done":
+                raise DepositionError("Only published depositions can have a new version")
+
+            versions = self.list_versions(source["conceptrecid"])
+            draft = next((version for version in versions if version["state"] == "unsubmitted"), None)
+            if draft is None:
+                latest = [version for version in versions if version["state"] == "done"][-1]
+                draft = self.create(
+                    conceptrecid=source["conceptrecid"],
+                    conceptdoi=source["conceptdoi"],
+                    metadata=latest["metadata"],
+                    files=latest["files"],
+                    version=max(version["version"] for version in versions) + 1,
+                )
+            return source, draft
 
     def delete(self, deposition_id: int) -> bool:
         with self._lock, self._connection() as connection:

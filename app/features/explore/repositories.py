@@ -1,4 +1,5 @@
 import re
+from datetime import date, datetime, time, timedelta
 
 import unidecode
 from splent_framework.repositories.BaseRepository import BaseRepository
@@ -12,7 +13,17 @@ class ExploreRepository(BaseRepository):
     def __init__(self):
         super().__init__(DataSet)
 
-    def filter(self, query="", sorting="newest", publication_type="any", tags=[], **kwargs):
+    def filter(
+        self,
+        query="",
+        sorting="newest",
+        publication_type="any",
+        tags=[],
+        author="",
+        start_date="",
+        end_date="",
+        **kwargs,
+    ):
         # Normalize and remove unwanted characters
         normalized_query = unidecode.unidecode(query).lower()
         cleaned_query = re.sub(r'[,.":\'()\[\]^;!¡¿?]', "", normalized_query)
@@ -53,6 +64,26 @@ class ExploreRepository(BaseRepository):
         if tags:
             datasets = datasets.filter(or_(*(DSMetaData.tags.ilike(f"%{tag}%") for tag in tags)))
 
+        author = str(author or "").strip()
+        if author:
+            author_term = unidecode.unidecode(author).lower()
+            datasets = datasets.filter(
+                or_(
+                    Author.name.ilike(f"%{author_term}%"),
+                    Author.affiliation.ilike(f"%{author_term}%"),
+                    Author.orcid.ilike(f"%{author_term}%"),
+                )
+            )
+
+        start_day = self._parse_date(start_date)
+        if start_day is not None:
+            datasets = datasets.filter(self.model.created_at >= datetime.combine(start_day, time.min))
+
+        end_day = self._parse_date(end_date)
+        if end_day is not None:
+            next_day = datetime.combine(end_day + timedelta(days=1), time.min)
+            datasets = datasets.filter(self.model.created_at < next_day)
+
         # Order by created_at
         if sorting == "oldest":
             datasets = datasets.order_by(self.model.created_at.asc())
@@ -60,3 +91,12 @@ class ExploreRepository(BaseRepository):
             datasets = datasets.order_by(self.model.created_at.desc())
 
         return datasets.all()
+
+    @staticmethod
+    def _parse_date(value):
+        if not value:
+            return None
+        try:
+            return date.fromisoformat(str(value))
+        except (TypeError, ValueError):
+            return None
