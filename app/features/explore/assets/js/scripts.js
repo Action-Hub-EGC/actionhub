@@ -36,6 +36,8 @@ function send_query() {
                 csrf_token: csrfToken,
                 query: document.querySelector('#query').value,
                 author: document.querySelector('#author').value,
+                start_date: document.querySelector('#start_date').value,
+                end_date: document.querySelector('#end_date').value,
                 publication_type: document.querySelector('#publication_type').value,
                 sorting: document.querySelector('[name="sorting"]:checked').value,
             };
@@ -169,6 +171,8 @@ function sync_url(searchCriteria) {
     const params = new URLSearchParams();
     if (searchCriteria.query) params.set('query', searchCriteria.query);
     if (searchCriteria.author) params.set('author', searchCriteria.author);
+    if (searchCriteria.start_date) params.set('start_date', searchCriteria.start_date);
+    if (searchCriteria.end_date) params.set('end_date', searchCriteria.end_date);
     if (searchCriteria.publication_type && searchCriteria.publication_type !== 'any') {
         params.set('publication_type', searchCriteria.publication_type);
     }
@@ -221,6 +225,9 @@ function clearFilters() {
         authorInput.value = "";
     }
 
+    document.querySelector('#start_date').value = "";
+    document.querySelector('#end_date').value = "";
+
     // Reset the publication type to its default value
     let publicationTypeSelect = document.querySelector('#publication_type');
     publicationTypeSelect.value = "any"; // replace "any" with whatever your default value is
@@ -244,6 +251,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const queryParam = urlParams.get('query');
     const authorParam = urlParams.get('author');
+    const startDateParam = urlParams.get('start_date');
+    const endDateParam = urlParams.get('end_date');
     const publicationTypeParam = urlParams.get('publication_type');
     const sortingParam = urlParams.get('sorting');
 
@@ -252,6 +261,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (authorParam && authorParam.trim() !== '') {
         document.getElementById('author').value = authorParam;
+    }
+    if (startDateParam) {
+        document.getElementById('start_date').value = startDateParam;
+    }
+    if (endDateParam) {
+        document.getElementById('end_date').value = endDateParam;
     }
     if (publicationTypeParam) {
         document.getElementById('publication_type').value = publicationTypeParam;
