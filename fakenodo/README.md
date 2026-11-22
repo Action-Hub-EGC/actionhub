@@ -9,15 +9,16 @@ Servicio HTTP que simula la parte de la API de depósitos de Zenodo que usa Acti
 
 Requisito: el entorno de desarrollo del [README](../README.md#arranque-rápido). fakenodo es un servicio más de `docker/docker-compose.dev.yml`.
 
-1. Crea el `.env` si aún no existe: `cp .env.docker.example .env` (en PowerShell, `Copy-Item .env.docker.example .env`).
-2. Añade al `.env` la URL de fakenodo:
+1. Crea el `.env` si aún no existe: `cp .env.docker.example .env` (en PowerShell, `Copy-Item .env.docker.example .env`). El ejemplo ya apunta a fakenodo y no lleva token:
 
    ```dotenv
    ZENODO_API_URL=http://fakenodo:8000/api/deposit/depositions
    ```
 
-3. Arranca el entorno: `docker compose -f docker/docker-compose.dev.yml up -d --build`.
-4. Comprueba que `web` llega a fakenodo. Debe responder `{"status":"ok"}`:
+   Si tu `.env` es anterior, añádele esa línea.
+
+2. Arranca el entorno: `docker compose -f docker/docker-compose.dev.yml up -d --build`.
+3. Comprueba que `web` llega a fakenodo. Debe responder `{"status":"ok"}`:
 
    ```bash
    docker compose -f docker/docker-compose.dev.yml exec web curl -s http://fakenodo:8000/health
@@ -35,13 +36,13 @@ El puerto 8000 solo está abierto dentro de la red de Compose, no en el host. Po
 | Sin definir, con `FLASK_ENV=production` | `https://zenodo.org/api/deposit/depositions` |
 | Sin definir, en cualquier otro entorno | `https://sandbox.zenodo.org/api/deposit/depositions` |
 
-Para volver a Zenodo, borra o comenta la línea del `.env` y recrea `web`:
+Para volver a Zenodo, borra o comenta la línea del `.env`, añade `ZENODO_ACCESS_TOKEN` y recrea `web`:
 
 ```bash
 docker compose -f docker/docker-compose.dev.yml up -d web
 ```
 
-No uses `docker compose restart`: el contenedor conserva las variables del `.env` con las que se creó. Contra Zenodo o su sandbox hace falta además `ZENODO_ACCESS_TOKEN`. fakenodo no lo necesita.
+No uses `docker compose restart`: el contenedor conserva las variables del `.env` con las que se creó. El token es opcional: si `ZENODO_ACCESS_TOKEN` no está definido o está vacío, ActionHub no envía `access_token`. fakenodo no lo necesita; Zenodo y su sandbox sí.
 
 ## Qué implementa hoy
 

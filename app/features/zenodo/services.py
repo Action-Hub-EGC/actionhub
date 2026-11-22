@@ -38,7 +38,8 @@ class ZenodoService(BaseService):
         self.ZENODO_ACCESS_TOKEN = self.get_zenodo_access_token()
         self.ZENODO_API_URL = self.get_zenodo_url()
         self.headers = {"Content-Type": "application/json"}
-        self.params = {"access_token": self.ZENODO_ACCESS_TOKEN}
+        # Optional: fakenodo needs no token, so only send it when there is one.
+        self.params = {"access_token": self.ZENODO_ACCESS_TOKEN} if self.ZENODO_ACCESS_TOKEN else {}
 
     def test_connection(self) -> bool:
         """
