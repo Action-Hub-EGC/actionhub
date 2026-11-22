@@ -12,6 +12,7 @@ def create_app(store: DepositionStore | None = None) -> Flask:
     app_store = store or DepositionStore(
         os.getenv("FAKENODO_STORE_PATH", "./data/fakenodo.sqlite3")
     )
+    app.extensions["fakenodo_store"] = app_store
     depositions = Blueprint(
         "depositions",
         __name__,
@@ -86,21 +87,6 @@ def create_app(store: DepositionStore | None = None) -> Flask:
         }
         app_store.update(deposition_id, files=[*deposition["files"], file_data])
         return jsonify(file_data), 201
-
-    @depositions.post("/<int:deposition_id>/actions/publish")
-    def publish_deposition(deposition_id: int):
-        deposition = app_store.get(deposition_id)
-        if deposition is None:
-            return jsonify({"message": "Deposition not found"}), 404
-        if deposition["state"] == "done":
-            return jsonify(deposition), 202
-
-        published = app_store.update(
-            deposition_id,
-            state="done",
-            doi=f"10.5072/fakenodo.{deposition_id}",
-        )
-        return jsonify(published), 202
 
     @depositions.delete("/<int:deposition_id>")
     def delete_deposition(deposition_id: int):
