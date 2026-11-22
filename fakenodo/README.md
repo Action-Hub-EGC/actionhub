@@ -52,11 +52,11 @@ No uses `docker compose restart`: el contenedor conserva las variables del `.env
 | `GET` | `/api/deposit/depositions` | Disponible (`200`) |
 | `GET` | `/api/deposit/depositions/{id}` | Disponible (`200` o `404`) |
 | `DELETE` | `/api/deposit/depositions/{id}` | Disponible (`204` o `404`) |
-| `POST` | `/api/deposit/depositions/{id}/files` | Pendiente: [#28](https://github.com/Action-Hub-EGC/actionhub/issues/28) |
-| `POST` | `/api/deposit/depositions/{id}/actions/publish` | Pendiente: [#29](https://github.com/Action-Hub-EGC/actionhub/issues/29) |
+| `POST` | `/api/deposit/depositions/{id}/files` | Disponible: añade un archivo a una deposition `unsubmitted` (`201`, `400` o `404`) |
+| `POST` | `/api/deposit/depositions/{id}/actions/publish` | Disponible: pasa la deposition a `done` y le asigna DOI (`202`, `400` o `404`) |
 | `POST` | `/api/deposit/depositions/{id}/actions/newversion` | Pendiente: [#30](https://github.com/Action-Hub-EGC/actionhub/issues/30) |
 
-Mientras #28 y #29 sigan abiertas, subir un dataset contra fakenodo crea la deposition, pero termina en estado parcial: el envío de archivos responde `404` y el dataset se queda sin DOI. Quien cierre cada una de esas tareas actualiza esta tabla.
+Al publicar, fakenodo asigna `doi` = `10.5072/fakenodo.<id>`, único porque lo es el `id`, y aparece después en `GET /api/deposit/depositions/{id}`. En la primera publicación de un concepto fija también `conceptdoi` = `10.5072/fakenodo.concept.<conceptrecid>`; si la deposition ya lo tiene, lo conserva. Como Zenodo, rechaza con `400` publicar una deposition sin archivos (`Minimum one file must be provided.`) o ya publicada.
 
 ## Qué no replica
 
@@ -65,7 +65,7 @@ fakenodo cubre solo lo que ActionHub consume. A diferencia de Zenodo:
 - **No autentica.** Ignora `access_token`; cualquier petición se acepta.
 - **No valida metadatos.** Acepta cualquier objeto en `metadata`; Zenodo responde `400` si un campo no es válido (por ejemplo, un `upload_type` desconocido) y no deja publicar sin los obligatorios.
 - **No registra DOI reales.** Los DOI que asigne usarán el prefijo de pruebas de DataCite (`10.5072`), que no resuelve en doi.org.
-- **Respuestas reducidas.** Una deposition solo tiene `id`, `conceptrecid`, `doi`, `state`, `metadata`, `files` y `version`; no incluye `links`, `created`, `modified`, `record_id` ni `doi_url`. Los errores son `{"message": ...}`, sin la lista `errors` de Zenodo.
+- **Respuestas reducidas.** Una deposition solo tiene `id`, `conceptrecid`, `conceptdoi`, `doi`, `state`, `metadata`, `files` y `version`; no incluye `links`, `created`, `modified`, `record_id` ni `doi_url`. Los errores son `{"message": ...}`, sin la lista `errors` de Zenodo.
 - **Listado sin filtros.** `GET /api/deposit/depositions` devuelve todas las depositions; ignora `q`, `status`, `sort`, `page` y `size`.
 - **Borrado sin restricciones.** Borra cualquier deposition; Zenodo solo permite borrar las no publicadas.
 - **Solo la API de depósitos.** No hay `/api/records`, búsqueda, comunidades, OAI-PMH ni interfaz web.
@@ -101,4 +101,4 @@ En `.github/workflows/CI_pipeline.yml`:
 
 - `lint` pasa ruff y black sobre `fakenodo/`.
 - `test` ejecuta sus tests y mide su cobertura (`--cov=fakenodo`).
-- `fakenodo` construye la imagen, la arranca y prueba crear, consultar, listar y borrar una deposition, también después de recrear el contenedor sobre el mismo volumen.
+- `fakenodo` construye la imagen, la arranca y prueba crear, consultar, listar, subir un archivo, publicar y borrar una deposition, también después de recrear el contenedor sobre el mismo volumen.
