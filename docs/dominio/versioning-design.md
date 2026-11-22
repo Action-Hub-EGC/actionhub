@@ -42,13 +42,13 @@ Este documento:
 
 Hallazgos:
 
-1. La misma ruta se construye en **cinco sitios** del código de aplicación, y en un sexto del seeder:
-   1. `DataSetService.move_feature_models` (`dataset/services.py:57`).
-   2. `DataSetService.build_download_archive` (`dataset/services.py:243`).
-   3. `HubfileService.get_path_by_hubfile` (`hubfile/services.py:43`).
-   4. `ZenodoService.upload_file` (`zenodo/services.py:192`).
-   5. `WorkflowDatasetService.upload_package` (`workflow/services.py:105`).
-   6. `dataset/seeders.py:112`.
+1. La misma ruta se construye en **cinco sitios** del código de aplicación, y en un sexto del seeder (se indica la línea donde empieza cada función):
+   1. `DataSetService.move_feature_models` (`dataset/services.py:52`).
+   2. `DataSetService.build_download_archive` (`dataset/services.py:231`).
+   3. `HubfileService.get_path_by_hubfile` (`hubfile/services.py:36`).
+   4. `ZenodoService.upload_file` (`zenodo/services.py:177`).
+   5. `WorkflowDatasetService.upload_package` (`workflow/services.py:49`).
+   6. `DataSetSeeder.run` (`dataset/seeders.py:18`).
 2. `upload_file` usa `uploads_folder_name()`; los demás usan `WORKING_DIR/uploads`. Coinciden en Docker, pero no está garantizado.
 3. La carpeta no distingue versiones. Si una versión nueva escribiera en ella, **sobrescribiría** los archivos de la anterior y el ZIP mezclaría versiones.
 
