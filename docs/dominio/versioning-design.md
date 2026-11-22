@@ -3,7 +3,7 @@
 - **Issue:** #35 · WI-196 (versionado mayor).
 - **Fecha:** 20 de noviembre de 2026.
 - **Autor:** José Fernando Gutiérrez (`@Jfgm299`).
-- **Apoyo y revisión:** Francisco Casasola (`@Pacocc9`).
+- **Apoyo:** Francisco Casasola (`@Pacocc9`). Pendiente de su revisión.
 - **Estado:** propuesta para revisión.
 - **Alcance:** documentación. No se modifica código en #35.
 
@@ -36,14 +36,20 @@ Este documento:
 
 - Subida: los archivos van primero a `uploads/temp/<user_id>/` (`AuthenticationService.temp_folder_by_user`).
 - Al crear el dataset se mueven a `uploads/user_<user_id>/dataset_<dataset_id>/` (`DataSetService.move_feature_models`, `dataset/services.py:52`).
-- La ruta de un archivo se **reconstruye** a partir del propietario, el dataset y `Hubfile.name` (`HubfileService.get_path_by_hubfile`, `hubfile/services.py:34`).
-- La descarga ZIP recorre la carpeta completa del dataset (`build_download_archive`, `dataset/services.py:243`).
-- El PR abierto de #14 (#92) guarda los paquetes de workflow en la misma carpeta, con subcarpetas como `fixtures/`.
+- La ruta de un archivo se **reconstruye** a partir del propietario, el dataset y `Hubfile.name` (`HubfileService.get_path_by_hubfile`, `hubfile/services.py:36`).
+- La descarga ZIP recorre la carpeta completa del dataset (`build_download_archive`, `dataset/services.py:231`).
+- Desde #14 (#92, ya fusionado), `WorkflowDatasetService.upload_package` guarda los paquetes de workflow en la misma carpeta, con subcarpetas como `fixtures/`.
 
 Hallazgos:
 
-1. La misma ruta se construye en **cuatro sitios** distintos: `move_feature_models`, `build_download_archive`, `get_path_by_hubfile` y `ZenodoService.upload_file` (`zenodo/services.py:192`).
-2. `upload_file` usa `uploads_folder_name()`; los otros tres usan `WORKING_DIR/uploads`. Coinciden en Docker, pero no está garantizado.
+1. La misma ruta se construye en **cinco sitios** del código de aplicación, y en un sexto del seeder:
+   1. `DataSetService.move_feature_models` (`dataset/services.py:57`).
+   2. `DataSetService.build_download_archive` (`dataset/services.py:243`).
+   3. `HubfileService.get_path_by_hubfile` (`hubfile/services.py:43`).
+   4. `ZenodoService.upload_file` (`zenodo/services.py:192`).
+   5. `WorkflowDatasetService.upload_package` (`workflow/services.py:105`).
+   6. `dataset/seeders.py:112`.
+2. `upload_file` usa `uploads_folder_name()`; los demás usan `WORKING_DIR/uploads`. Coinciden en Docker, pero no está garantizado.
 3. La carpeta no distingue versiones. Si una versión nueva escribiera en ella, **sobrescribiría** los archivos de la anterior y el ZIP mezclaría versiones.
 
 ### 2.3. Flujo de Zenodo
@@ -60,8 +66,9 @@ Hallazgos:
 
 1. No hay llamada a `actions/newversion`. fakenodo la añadirá en #30; publicar llega en #29.
 2. Si falla entre los pasos 2 y 5, el dataset queda con `deposition_id` pero sin DOI (respuesta `partial`). No hay reintento.
-3. `get_zenodo_url` (`dataset/models.py:102`) construye `https://zenodo.org/record/<deposition_id>` a mano; se corrige en #32.
-4. fakenodo ya guarda `conceptrecid` (igual al `id` en la primera versión) y una columna `version` (`fakenodo/store.py`).
+3. Si el paso 1 lanza una excepción, `upload_dataset` la captura y deja `zenodo_data = {}`. Como no hay `conceptrecid`, se saltan los pasos 2 a 5 y el método devuelve `"ok"`, no `"partial"`: el dataset queda sin `deposition_id` ni DOI y el usuario no recibe ningún aviso (`dataset/services.py:205-229`). #38 debe tratarlo como un fallo reintentable.
+4. `get_zenodo_url` (`dataset/models.py:102`) construye `https://zenodo.org/record/<deposition_id>` a mano; se corrige en #32.
+5. fakenodo ya guarda `conceptrecid` (igual al `id` en la primera versión) y una columna `version` (`fakenodo/store.py`).
 
 ### 2.4. `DOIMapping`
 
@@ -90,7 +97,7 @@ Cada versión es un dataset completo (con su `DSMetaData`, sus autores y su carp
 | DOI por versión (#40) | Una consulta más en `dataset_version.doi`. | Gratis: cada fila tiene su `dataset_doi`. |
 | Datos duplicados | Ninguno. | `DSMetaData`, autores y métricas copiados en cada versión. |
 | Encaje con el código de #12 | `FeatureModel` y `WorkflowVersion` pasan a colgar de una versión. Simétrico para los dos tipos. | `WorkflowVersion` queda 1:1 con su fila y pierde sentido. |
-| Historial de versiones (#42) | `dataset.versions`. | Consulta por `conceptrecid`, que es nulo hasta publicar. |
+| Historial de versiones (#42) | `dataset.dataset_versions`. | Consulta por `conceptrecid`, que es nulo hasta publicar. |
 | Datos existentes | Una versión 1 por dataset. | `conceptrecid` nulo en todo lo publicado; hay que inventar una clave de grupo. |
 
 ## 4. Decisión
@@ -137,9 +144,13 @@ Cambios en tablas existentes:
 
 En `BaseDataset`:
 
-- `versions`: relación con `DatasetVersion`, ordenada por `number`.
-- `latest_version()` y `latest_published_version()`.
-- `files(version=None)`: archivos de una versión; por defecto, la última publicada. Cada subtipo resuelve cómo llegar a ellos.
+- `dataset_versions`: relación con `DatasetVersion`, ordenada por `number`.
+- `latest_dataset_version()` y `latest_published_dataset_version()`.
+- `files_for_version(version=None)`: archivos de una versión; por defecto, la última publicada. Cada subtipo resuelve cómo llegar a ellos.
+
+Los nombres no pueden ser `versions`, `latest_version()` ni `files()`: `WorkflowDataset` ya los define (`workflow/models.py:35-41`) y, en herencia declarativa, la subclase taparía los de `BaseDataset`. `workflow.versions` devolvería `WorkflowVersion` y no `DatasetVersion`, y el diseño común de la sección 6 no se cumpliría.
+
+`WorkflowDataset` no cambia: `versions` y `latest_version()` siguen refiriéndose a `WorkflowVersion`, y `files()` sigue devolviendo todos los archivos del workflow. No se renombran para no tocar la plantilla ni los tests de #12 y #14.
 
 Reglas:
 
@@ -151,15 +162,15 @@ Reglas:
 1. Crear `dataset_version` y las columnas nuevas.
 2. Por cada fila de `data_set`, crear la versión 1 con `deposition_id` y `doi = dataset_doi` de su `DSMetaData`. `published_at = created_at` si tiene DOI.
 3. Rellenar `feature_model.dataset_version_id` con la versión 1 de su dataset.
-4. Rellenar `workflow_version.dataset_version_id`. Si un workflow tuviera varias `WorkflowVersion`, se numeran por `created_at`.
+4. Rellenar `workflow_version.dataset_version_id` con la versión 1 de su workflow. Hoy la relación es 1:1: el único sitio que crea una `WorkflowVersion` es `upload_package`, y siempre crea un workflow nuevo con una sola versión. Las versiones siguientes solo aparecerán con #38, que ya creará su `dataset_version`. Como `workflow_version.dataset_version_id` es único, la migración comprueba antes del paso 1 que ningún workflow tiene más de una `WorkflowVersion` y, si alguno la tiene, se detiene con un error que lo nombra, en vez de inventar números de versión o DOIs.
 5. `conceptrecid` y `concept_doi` quedan nulos en los datasets existentes: nunca se guardaron. Se pueden recuperar con `GET /depositions/{id}` en un comando aparte; no se hace en la migración.
 6. `downgrade` borra columnas y tabla. No toca archivos.
 
 ### 5.3. Archivos por versión (#37)
 
 - Nueva ruta: `uploads/user_<user_id>/dataset_<dataset_id>/v<number>/<name>`.
-- La ruta se calcula en **un solo sitio**, por ejemplo `HubfileService.version_dir(dataset, version)`, y la usan los cuatro puntos de 2.2. Con eso se corrige también la diferencia entre `uploads_folder_name()` y `WORKING_DIR/uploads`.
-- Compatibilidad: **no se mueven archivos en la migración**. Si `v1/` no existe, la versión 1 se lee de la carpeta antigua `dataset_<id>/`. Así, los datasets existentes y los subidos por #92 siguen descargándose.
+- La ruta se calcula en **un solo sitio**, por ejemplo `HubfileService.version_dir(dataset, version)`, y la usan los seis puntos de 2.2 (cinco de aplicación y el seeder). Con eso se corrige también la diferencia entre `uploads_folder_name()` y `WORKING_DIR/uploads`.
+- Compatibilidad: **no se mueven archivos en la migración**. Si `v1/` no existe, la versión 1 se lee de la carpeta antigua `dataset_<id>/`. Así, los datasets existentes y los workflows subidos con `upload_package` antes de #37 siguen descargándose.
 - La descarga ZIP es de una versión: recorre solo `v<n>/` (o la carpeta antigua para v1 sin `v1/`, sin entrar en subcarpetas `v*/`).
 - Una versión nueva copia los archivos de la anterior a `v<n+1>/` y aplica ahí las altas, cambios y bajas. Nunca se escribe en la carpeta de una versión publicada.
 
@@ -218,8 +229,8 @@ Con `dataset_version.doi` no hace falta escribir cada DOI de versión en `DOIMap
 1. **Número de versión y manifiesto.** El manifiesto de workflow usa SemVer (`version: 1.0.0`, #92) y el hub usa una versión mayor entera. Propuesta para #38: exigir que el mayor del manifiesto coincida con `dataset_version.number`.
 2. **Respuesta de `newversion` en fakenodo** (#30). Si no sigue a Zenodo, #38 queda bloqueado.
 3. **`conceptrecid` de los datasets existentes** es nulo. Su concept DOI no resolverá hasta recuperarlo.
-4. **#92 sigue abierto** y escribe en `dataset_<id>/`. La compatibilidad de 5.3 lo cubre sin cambiar ese PR.
-5. **`partial` sin reintento.** Hoy un fallo en Zenodo deja el dataset sin DOI. #38 debe permitir reintentar la publicación de un borrador.
+4. **`upload_package` (#92, fusionado) escribe en `dataset_<id>/`.** La compatibilidad de 5.3 cubre los workflows ya subidos; #37 cambia esa ruta a `v1/` para los nuevos.
+5. **Fallos de Zenodo sin reintento.** Hoy un fallo deja el dataset sin DOI, con `partial` o incluso con `ok` si falla la creación de la deposition (2.3). #38 debe permitir reintentar la publicación de un borrador.
 
 ## 8. Impacto en otros issues
 
@@ -229,7 +240,7 @@ Con `dataset_version.doi` no hace falta escribir cada DOI de versión en `DOIMap
 | #37 | Ruta, compatibilidad y descarga de 5.3. |
 | #38 | Flujo de 5.4 y preguntas 1 y 5. |
 | #40 | Orden de resolución de 5.5. Propuesta de ajuste del issue. |
-| #42, #44, #45 | `dataset.versions`, descarga por versión y concept DOI. |
+| #42, #44, #45 | `dataset.dataset_versions`, descarga por versión y concept DOI. |
 | #30 | Forma de la respuesta de `newversion`. |
 
 ## 9. Referencias
@@ -241,6 +252,8 @@ Con `dataset_version.doi` no hace falta escribir cada DOI de versión en `DOIMap
 - `app/features/hubfile/services.py`
 - `app/features/hubfile/models.py`
 - `app/features/workflow/models.py`
+- `app/features/workflow/services.py`
+- `app/features/dataset/seeders.py`
 - `app/features/zenodo/services.py`
 - `fakenodo/store.py`
 - [Auditoría de llamadas a Zenodo](../zenodo-api-audit.md)
