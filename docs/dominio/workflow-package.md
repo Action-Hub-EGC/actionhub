@@ -1,8 +1,8 @@
 # Formato de paquete de workflow
 
-- **Issue:** #14.
+- **Issue:** #14, #15, #16.
 - **Formato:** un único archivo `.zip`.
-- **Estado:** implementado; validación L1 + esquema del manifiesto.
+- **Estado:** implementado; validación L1 (sintaxis YAML), L2 (esquema oficial de GitHub Actions) y esquema del manifiesto.
 
 ## Estructura
 
@@ -32,7 +32,7 @@ authors:
 tags:
   - ci
   - demo
-repository: https://github.com/example/demo-workflow
+repository: [https://github.com/example/demo-workflow](https://github.com/example/demo-workflow)
 ```
 
 ### Campos
@@ -57,10 +57,25 @@ Antes de guardar nada:
 1. El archivo es un ZIP válido y no supera **10 MB**.
 2. Están los cuatro archivos obligatorios.
 3. `README.md` y `LICENSE` no están vacíos y son UTF-8.
-4. `actionhub.yaml` pasa L1 (YAML y claves duplicadas) y el JSON Schema.
-5. `workflow.yml` pasa L1 y define `on` y al menos un `job`.
+4. `actionhub.yaml` pasa L1 (YAML bien formado y sin claves duplicadas) y el JSON Schema del manifiesto.
+5. `workflow.yml` pasa L1 (sintaxis YAML y claves duplicadas) y **L2** (validación bloqueante contra el esquema oficial de GitHub Actions vendoreado en `app/features/workflow/schemas/github-workflow.schema.json`).
 
-Si algo falla, se devuelven errores con archivo, campo y línea cuando están disponibles. **No se crea ningún dataset.**
+Si algo falla en L1, L2 o el manifiesto, se devuelven errores con archivo, campo y línea cuando están disponibles. **No se crea ningún dataset.**
+
+## Esquemas
+
+Los esquemas JSON viven en `app/features/workflow/schemas/` para garantizar validación determinista y sin acceso a red en local y en CI:
+
+| Archivo | Propósito | Dialecto | Origen y licencia |
+|---|---|---|---|
+| `actionhub.schema.json` | Manifiesto de metadatos `actionhub.yaml` | Draft 2020-12 | Propio de ActionHub |
+| `github-workflow.schema.json` | Validación L2 de `workflow.yml` | Draft-07 | [SchemaStore](https://json.schemastore.org/github-workflow.json) (`SchemaStore/schemastore`, licencia **Apache-2.0**) |
+
+`github-workflow.schema.json` fue descargado de `https://json.schemastore.org/github-workflow.json` el **22 de noviembre de 2026**. Para refrescarlo manualmente:
+
+```bash
+curl -fsSL [https://json.schemastore.org/github-workflow.json](https://json.schemastore.org/github-workflow.json) -o app/features/workflow/schemas/github-workflow.schema.json
+```
 
 ## Persistencia
 
@@ -78,16 +93,19 @@ La publicación con DOI llega en #19/#31.
 | Error | Causa |
 |---|---|
 | `Falta el archivo obligatorio: LICENSE` | El ZIP no contiene `LICENSE` en la raíz |
-| `Manifiesto inválido: ...` | Un campo no cumple el esquema |
-| `Clave duplicada: ...` | `actionhub.yaml` repite una clave |
-| `workflow.yml debe definir al menos un job` | Falta `jobs` o está vacío |
+| `Manifiesto inválido: ...` | Un campo de `actionhub.yaml` no cumple el esquema |
+| `Clave duplicada: ...` | `actionhub.yaml` o `workflow.yml` repite una clave |
+| `Esquema inválido: ...` | `workflow.yml` no cumple el esquema oficial de GitHub Actions (p. ej. falta `on`, `jobs` o `runs-on`) |
 | `Ruta no permitida dentro del ZIP` | Entrada con `..` o ruta absoluta |
 | `Archivo no permitido en el paquete` | Archivo fuera de la estructura |
 
 ## Referencias
 
 - `app/features/workflow/package.py`
+- `app/features/workflow/validation.py`
 - `app/features/workflow/schemas/actionhub.schema.json`
+- `app/features/workflow/schemas/github-workflow.schema.json`
 - `app/features/workflow/services.py`
 - `app/features/workflow/routes.py`
 - `app/features/workflow/tests/test_package.py`
+- `app/features/workflow/tests/test_validation.py`

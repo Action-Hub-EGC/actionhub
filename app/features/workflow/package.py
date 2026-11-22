@@ -129,9 +129,7 @@ class PackageValidator:
         files: dict[str, bytes] = {}
         total_size = 0
         for info, name in zip(infos, names):
-            is_macos_meta = (
-                name.startswith("__MACOSX/") or name.endswith(".DS_Store")
-            )
+            is_macos_meta = name.startswith("__MACOSX/") or name.endswith(".DS_Store")
             if not name or is_macos_meta:
                 continue
             if self._unsafe_path(name):
@@ -152,16 +150,11 @@ class PackageValidator:
                 issues.append(PackageIssue(msg, file=name))
                 continue
             if len(name) > 120:
-                msg = (
-                    "El nombre del archivo supera los 120 caracteres: "
-                    f"{name}."
-                )
+                msg = "El nombre del archivo supera los 120 caracteres: " f"{name}."
                 issues.append(PackageIssue(msg, file=name))
                 continue
             if name in files:
-                issues.append(
-                    PackageIssue("Archivo duplicado en el ZIP.", file=name)
-                )
+                issues.append(PackageIssue("Archivo duplicado en el ZIP.", file=name))
                 continue
             if stat.S_ISLNK(info.external_attr >> 16):
                 issues.append(
@@ -174,10 +167,7 @@ class PackageValidator:
             total_size += info.file_size
             if total_size > MAX_UNCOMPRESSED_BYTES:
                 limit_mb = MAX_UNCOMPRESSED_BYTES // (1024 * 1024)
-                msg = (
-                    "El contenido descomprimido supera el límite de "
-                    f"{limit_mb} MB."
-                )
+                msg = "El contenido descomprimido supera el límite de " f"{limit_mb} MB."
                 issues.append(PackageIssue(msg))
                 return {}
             try:
@@ -203,18 +193,13 @@ class PackageValidator:
             return names
         root = next(iter(roots))
         prefix = root + "/"
-        matches_root = all(
-            name == root or name.startswith(prefix) for name in non_empty
-        )
+        matches_root = all(name == root or name.startswith(prefix) for name in non_empty)
         if not matches_root:
             return names
         if root in REQUIRED_FILES:
             return names
         prefix_len = len(prefix)
-        return [
-            name[prefix_len:] if name.startswith(prefix) else name
-            for name in names
-        ]
+        return [name[prefix_len:] if name.startswith(prefix) else name for name in names]
 
     @staticmethod
     def _unsafe_path(name: str) -> bool:
@@ -231,14 +216,10 @@ class PackageValidator:
         try:
             content = files[name].decode("utf-8")
         except UnicodeDecodeError:
-            issues.append(
-                PackageIssue("El archivo debe estar en UTF-8.", file=name)
-            )
+            issues.append(PackageIssue("El archivo debe estar en UTF-8.", file=name))
             return
         if not content.strip():
-            issues.append(
-                PackageIssue("El archivo no puede estar vacío.", file=name)
-            )
+            issues.append(PackageIssue("El archivo no puede estar vacío.", file=name))
 
     def _validate_manifest(
         self,
@@ -304,13 +285,8 @@ class PackageValidator:
             )
         tags = manifest.get("tags") or []
         if tags and len(", ".join(tags)) > 120:
-            msg = (
-                "La suma de los tags supera los 120 caracteres "
-                "de la columna."
-            )
-            issues.append(
-                PackageIssue(msg, file="actionhub.yaml", field="tags")
-            )
+            msg = "La suma de los tags supera los 120 caracteres " "de la columna."
+            issues.append(PackageIssue(msg, file="actionhub.yaml", field="tags"))
         return manifest
 
     def _validate_workflow(
