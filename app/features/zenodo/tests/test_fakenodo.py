@@ -221,3 +221,77 @@ def test_delete_unknown_deposition_returns_404(fakenodo_client):
 
     assert response.status_code == 404
     assert response.get_json() == {"message": "Deposition not found"}
+
+
+def _create_with_file(client, title="Dataset"):
+    created = client.post(DEPOSITIONS_URL, json={"metadata": {"title": title}}).get_json()
+    client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"file": (io.BytesIO(b"content"), "model.uvl")},
+        content_type="multipart/form-data",
+    )
+    return created
+
+
+def test_publish_assigns_doi_and_concept_doi(fakenodo_client):
+    created = _create_with_file(fakenodo_client)
+
+    response = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish")
+
+    assert response.status_code == 202
+    published = response.get_json()
+    assert published["state"] == "done"
+    assert published["doi"] == f"10.5072/fakenodo.{created['id']}"
+    assert published["conceptdoi"] == f"10.5072/fakenodo.concept.{created['conceptrecid']}"
+    assert published["doi"] != published["conceptdoi"]
+
+
+def test_published_doi_appears_in_get(fakenodo_client):
+    created = _create_with_file(fakenodo_client)
+    published = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish").get_json()
+
+    deposition = fakenodo_client.get(f"{DEPOSITIONS_URL}/{created['id']}").get_json()
+
+    assert deposition == published
+    assert deposition["doi"] == published["doi"]
+
+
+def test_published_dois_are_unique(fakenodo_client):
+    dois = []
+    for title in ("First", "Second", "Third"):
+        created = _create_with_file(fakenodo_client, title)
+        published = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish").get_json()
+        dois.append(published["doi"])
+
+    assert len(set(dois)) == len(dois)
+
+
+def test_publish_rejects_deposition_without_files(fakenodo_client):
+    created = fakenodo_client.post(DEPOSITIONS_URL).get_json()
+
+    response = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish")
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "Minimum one file must be provided."}
+    deposition = fakenodo_client.get(f"{DEPOSITIONS_URL}/{created['id']}").get_json()
+    assert deposition["state"] == "unsubmitted"
+    assert deposition["doi"] is None
+    assert deposition["conceptdoi"] is None
+
+
+def test_publish_rejects_already_published_deposition(fakenodo_client):
+    created = _create_with_file(fakenodo_client)
+    first = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish").get_json()
+
+    response = fakenodo_client.post(f"{DEPOSITIONS_URL}/{created['id']}/actions/publish")
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "Deposition is already published"}
+    assert fakenodo_client.get(f"{DEPOSITIONS_URL}/{created['id']}").get_json() == first
+
+
+def test_publish_unknown_deposition_returns_404(fakenodo_client):
+    response = fakenodo_client.post(f"{DEPOSITIONS_URL}/999/actions/publish")
+
+    assert response.status_code == 404
+    assert response.get_json() == {"message": "Deposition not found"}

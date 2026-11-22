@@ -8,6 +8,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable
 
+# DataCite test prefix: DOIs under it never resolve in doi.org.
+DOI_PREFIX = "10.5072"
+
+
+class PublishError(ValueError):
+    """Raised when a deposition cannot be published."""
+
 
 class DepositionStore:
     """Persistent SQLite store for Fakenodo depositions."""
@@ -41,6 +48,7 @@ class DepositionStore:
                 CREATE TABLE IF NOT EXISTS depositions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     conceptrecid INTEGER,
+                    conceptdoi TEXT,
                     doi TEXT,
                     state TEXT NOT NULL CHECK (state IN ('unsubmitted', 'done')),
                     metadata TEXT NOT NULL,
@@ -48,12 +56,17 @@ class DepositionStore:
                     version INTEGER NOT NULL DEFAULT 1
                 )
                 """)
+            # Stores created before the concept DOI existed lack the column.
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(depositions)")}
+            if "conceptdoi" not in columns:
+                connection.execute("ALTER TABLE depositions ADD COLUMN conceptdoi TEXT")
 
     @staticmethod
     def _row_to_deposition(row: sqlite3.Row) -> dict[str, Any]:
         return {
             "id": row["id"],
             "conceptrecid": row["conceptrecid"],
+            "conceptdoi": row["conceptdoi"],
             "doi": row["doi"],
             "state": row["state"],
             "metadata": json.loads(row["metadata"]),
@@ -66,6 +79,7 @@ class DepositionStore:
         deposition_id: int | None = None,
         *,
         conceptrecid: int | None = None,
+        conceptdoi: str | None = None,
         doi: str | None = None,
         state: str = "unsubmitted",
         metadata: dict[str, Any] | None = None,
@@ -83,10 +97,11 @@ class DepositionStore:
                 cursor = connection.execute(
                     """
                     INSERT INTO depositions
-                        (doi, state, metadata, files, version)
-                    VALUES (?, ?, ?, ?, ?)
+                        (conceptdoi, doi, state, metadata, files, version)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
+                        conceptdoi,
                         doi,
                         state,
                         json.dumps(metadata_value, ensure_ascii=False),
@@ -103,12 +118,13 @@ class DepositionStore:
                 connection.execute(
                     """
                     INSERT INTO depositions
-                        (id, conceptrecid, doi, state, metadata, files, version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (id, conceptrecid, conceptdoi, doi, state, metadata, files, version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         deposition_id,
                         conceptrecid if conceptrecid is not None else deposition_id,
+                        conceptdoi,
                         doi,
                         state,
                         json.dumps(metadata_value, ensure_ascii=False),
@@ -138,6 +154,7 @@ class DepositionStore:
     def update(self, deposition_id: int, **changes: Any) -> dict[str, Any] | None:
         allowed = {
             "conceptrecid": "conceptrecid",
+            "conceptdoi": "conceptdoi",
             "doi": "doi",
             "state": "state",
             "metadata": "metadata",
@@ -174,6 +191,33 @@ class DepositionStore:
             if cursor.rowcount == 0:
                 return None
         return self.get(deposition_id)
+
+    def publish(self, deposition_id: int) -> dict[str, Any] | None:
+        """Move a deposition to ``done`` and assign it a fake DOI.
+
+        The DOI is ``10.5072/fakenodo.<id>``, unique because the id is. The
+        concept DOI is set only on the first publish of the concept. Returns
+        ``None`` if the deposition does not exist and raises ``PublishError``
+        if it is already published or has no files, as Zenodo does. The check
+        and the update share the store lock, so two concurrent publishes
+        cannot both succeed.
+        """
+        with self._lock:
+            deposition = self.get(deposition_id)
+            if deposition is None:
+                return None
+            if deposition["state"] == "done":
+                raise PublishError("Deposition is already published")
+            if not deposition["files"]:
+                raise PublishError("Minimum one file must be provided.")
+
+            changes: dict[str, Any] = {
+                "state": "done",
+                "doi": f"{DOI_PREFIX}/fakenodo.{deposition_id}",
+            }
+            if not deposition["conceptdoi"]:
+                changes["conceptdoi"] = f"{DOI_PREFIX}/fakenodo.concept.{deposition['conceptrecid']}"
+            return self.update(deposition_id, **changes)
 
     def delete(self, deposition_id: int) -> bool:
         with self._lock, self._connection() as connection:

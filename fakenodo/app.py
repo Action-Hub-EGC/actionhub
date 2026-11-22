@@ -4,7 +4,7 @@ import os
 from flask import Blueprint, Flask, jsonify, request
 from werkzeug.exceptions import BadRequest
 
-from fakenodo.store import DepositionStore
+from fakenodo.store import DepositionStore, PublishError
 
 
 def create_app(store: DepositionStore | None = None) -> Flask:
@@ -85,6 +85,16 @@ def create_app(store: DepositionStore | None = None) -> Flask:
         }
         app_store.update(deposition_id, files=[*deposition["files"], file_data])
         return jsonify(file_data), 201
+
+    @depositions.post("/<int:deposition_id>/actions/publish")
+    def publish_deposition(deposition_id: int):
+        try:
+            deposition = app_store.publish(deposition_id)
+        except PublishError as error:
+            return jsonify({"message": str(error)}), 400
+        if deposition is None:
+            return jsonify({"message": "Deposition not found"}), 404
+        return jsonify(deposition), 202
 
     @depositions.delete("/<int:deposition_id>")
     def delete_deposition(deposition_id: int):
