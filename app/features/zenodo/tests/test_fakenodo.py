@@ -1,3 +1,6 @@
+import hashlib
+import io
+
 import pytest
 
 from fakenodo.app import create_app
@@ -106,6 +109,94 @@ def test_get_deposition(fakenodo_client):
 
     assert response.status_code == 200
     assert response.get_json() == created
+
+
+def test_upload_file_stores_name_size_and_checksum_and_lists_it(fakenodo_client):
+    created = fakenodo_client.post(
+        DEPOSITIONS_URL,
+        json={"metadata": {"title": "Dataset"}},
+    ).get_json()
+    content = b"feature data"
+
+    upload = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"name": "dataset.uvl", "file": (io.BytesIO(content), "ignored-name.uvl")},
+        content_type="multipart/form-data",
+    )
+
+    assert upload.status_code == 201
+    assert upload.get_json() == {
+        "id": 1,
+        "filename": "dataset.uvl",
+        "filesize": len(content),
+        "checksum": f"md5:{hashlib.md5(content).hexdigest()}",
+    }
+
+    deposition = fakenodo_client.get(f"{DEPOSITIONS_URL}/{created['id']}").get_json()
+    assert deposition["files"] == [upload.get_json()]
+
+
+def test_upload_file_is_rejected_after_publishing(fakenodo_client):
+    created = fakenodo_client.post(
+        DEPOSITIONS_URL,
+        json={"metadata": {"title": "Dataset"}},
+    ).get_json()
+    upload = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"name": "before-publish.uvl", "file": (io.BytesIO(b"published"), "ignored.uvl")},
+        content_type="multipart/form-data",
+    )
+    assert upload.status_code == 201
+
+    store = fakenodo_client.application.extensions.get("fakenodo_store")
+    assert store is not None
+    store.update(created["id"], state="done")
+
+    response = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"file": (io.BytesIO(b"late file"), "late.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "Cannot upload files to a published deposition"}
+
+
+def test_upload_file_rejects_missing_file(fakenodo_client):
+    created = fakenodo_client.post(DEPOSITIONS_URL).get_json()
+
+    response = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"name": "missing.uvl"},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "file is required"}
+
+
+def test_upload_file_rejects_unknown_deposition(fakenodo_client):
+    response = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/999/files",
+        data={"file": (io.BytesIO(b"content"), "model.uvl")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 404
+    assert response.get_json() == {"message": "Deposition not found"}
+
+
+def test_upload_file_uses_filename_when_name_is_not_sent(fakenodo_client):
+    created = fakenodo_client.post(DEPOSITIONS_URL).get_json()
+
+    response = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"file": (io.BytesIO(b"content"), "fallback.uvl")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 201
+    assert response.get_json()["filename"] == "fallback.uvl"
 
 
 def test_get_unknown_deposition_returns_404(fakenodo_client):
