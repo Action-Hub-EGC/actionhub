@@ -51,12 +51,24 @@ No uses `docker compose restart`: el contenedor conserva las variables del `.env
 | `POST` | `/api/deposit/depositions` | Disponible: crea una deposition `unsubmitted` (`201`) |
 | `GET` | `/api/deposit/depositions` | Disponible (`200`) |
 | `GET` | `/api/deposit/depositions/{id}` | Disponible (`200` o `404`) |
+| `PUT` | `/api/deposit/depositions/{id}` | Disponible: cambia solo `metadata`, sin tocar el DOI (`200`, `400` o `404`) |
 | `DELETE` | `/api/deposit/depositions/{id}` | Disponible (`204` o `404`) |
 | `POST` | `/api/deposit/depositions/{id}/files` | Disponible: añade un archivo a una deposition `unsubmitted` (`201`, `400` o `404`) |
+| `DELETE` | `/api/deposit/depositions/{id}/files/{file_id}` | Disponible: quita un archivo de una deposition `unsubmitted` (`204`, `400` o `404`) |
 | `POST` | `/api/deposit/depositions/{id}/actions/publish` | Disponible: pasa la deposition a `done` y le asigna DOI (`202`, `400` o `404`) |
-| `POST` | `/api/deposit/depositions/{id}/actions/newversion` | Pendiente: [#30](https://github.com/Action-Hub-EGC/actionhub/issues/30) |
+| `POST` | `/api/deposit/depositions/{id}/actions/newversion` | Disponible: crea el borrador de la versión siguiente (`201`, `400` o `404`) |
 
 Al publicar, fakenodo asigna `doi` = `10.5072/fakenodo.<id>`, único porque lo es el `id`, y aparece después en `GET /api/deposit/depositions/{id}`. En la primera publicación de un concepto fija también `conceptdoi` = `10.5072/fakenodo.concept.<conceptrecid>`; si la deposition ya lo tiene, lo conserva. Como Zenodo, rechaza con `400` publicar una deposition sin archivos (`Minimum one file must be provided.`) o ya publicada.
+
+### Versiones
+
+Todas las versiones de un dataset comparten `conceptrecid` y `conceptdoi`; cada una tiene su propio `id` y su propio `doi`.
+
+1. `POST /{id}/actions/newversion` sobre una deposition publicada crea un borrador `unsubmitted` con el mismo `conceptrecid` y `conceptdoi`, sin `doi`, con `version` siguiente y con los metadatos y archivos de la última versión publicada. Como en Zenodo, la respuesta es la deposition sobre la que se llamó, y el borrador está en `links.latest_draft`.
+2. Se cambian los archivos del borrador con `POST /{id}/files` y `DELETE /{id}/files/{file_id}`, y los metadatos con `PUT /{id}`.
+3. `POST /{id}/actions/publish` le asigna un DOI nuevo y conserva el `conceptdoi`. Como Zenodo, responde `400` si sus archivos son los mismos que los de una versión ya publicada (`New version's files must differ from all previous versions.`).
+
+Cambiar solo los metadatos con `PUT /{id}` mantiene el mismo DOI; no crea versión. Un concepto tiene como mucho un borrador: si se vuelve a llamar a `newversion` mientras existe, se devuelve el mismo.
 
 ## Qué no replica
 
@@ -65,8 +77,9 @@ fakenodo cubre solo lo que ActionHub consume. A diferencia de Zenodo:
 - **No autentica.** Ignora `access_token`; cualquier petición se acepta.
 - **No valida metadatos.** Acepta cualquier objeto en `metadata`; Zenodo responde `400` si un campo no es válido (por ejemplo, un `upload_type` desconocido) y no deja publicar sin los obligatorios.
 - **No registra DOI reales.** Los DOI que asigne usarán el prefijo de pruebas de DataCite (`10.5072`), que no resuelve en doi.org.
-- **Respuestas reducidas.** Una deposition solo tiene `id`, `conceptrecid`, `conceptdoi`, `doi`, `state`, `metadata`, `files` y `version`; no incluye `links`, `created`, `modified`, `record_id` ni `doi_url`. Los errores son `{"message": ...}`, sin la lista `errors` de Zenodo.
+- **Respuestas reducidas.** Una deposition solo tiene `id`, `conceptrecid`, `conceptdoi`, `doi`, `state`, `metadata`, `files` y `version`; no incluye `links` (salvo `links.latest_draft` en la respuesta de `newversion`), `created`, `modified`, `record_id` ni `doi_url`. Los errores son `{"message": ...}`, sin la lista `errors` de Zenodo.
 - **Listado sin filtros.** `GET /api/deposit/depositions` devuelve todas las depositions; ignora `q`, `status`, `sort`, `page` y `size`.
+- **Edición sin `actions/edit`.** `PUT /{id}` cambia los metadatos de una deposition publicada directamente; Zenodo exige antes `POST /{id}/actions/edit` y después volver a publicar. En ambos casos el DOI no cambia.
 - **Borrado sin restricciones.** Borra cualquier deposition; Zenodo solo permite borrar las no publicadas.
 - **Solo la API de depósitos.** No hay `/api/records`, búsqueda, comunidades, OAI-PMH ni interfaz web.
 - **Sin límites.** No hay cuotas, tamaño máximo de archivo ni límite de peticiones.
@@ -101,4 +114,4 @@ En `.github/workflows/CI_pipeline.yml`:
 
 - `lint` pasa ruff y black sobre `fakenodo/`.
 - `test` ejecuta sus tests y mide su cobertura (`--cov=fakenodo`).
-- `fakenodo` construye la imagen, la arranca y prueba crear, consultar, listar, subir un archivo, publicar y borrar una deposition, también después de recrear el contenedor sobre el mismo volumen.
+- `fakenodo` construye la imagen, la arranca y prueba crear, consultar, listar, subir un archivo, crear y publicar una versión nueva,publicar y borrar una deposition, también después de recrear el contenedor sobre el mismo volumen.
