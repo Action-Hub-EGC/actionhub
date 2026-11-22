@@ -47,7 +47,7 @@ Hallazgos:
    2. `DataSetService.build_download_archive` (`dataset/services.py:231`).
    3. `HubfileService.get_path_by_hubfile` (`hubfile/services.py:36`).
    4. `ZenodoService.upload_file` (`zenodo/services.py:177`).
-   5. `WorkflowDatasetService.upload_package` (`workflow/services.py:49`).
+   5. `WorkflowDatasetService.upload_package` (`workflow/services.py:60`).
    6. `DataSetSeeder.run` (`dataset/seeders.py:18`).
 2. `upload_file` usa `uploads_folder_name()`; los demás usan `WORKING_DIR/uploads`. Coinciden en Docker, pero no está garantizado.
 3. La carpeta no distingue versiones. Si una versión nueva escribiera en ella, **sobrescribiría** los archivos de la anterior y el ZIP mezclaría versiones.
