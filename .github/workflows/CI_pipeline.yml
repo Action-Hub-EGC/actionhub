@@ -173,7 +173,17 @@ jobs:
           call 201 -X POST -F "file=@$RUNNER_TEMP/model.uvl" "$api/$id/files" | jq -e '.filename == "model.uvl"'
           doi=$(call 202 -X POST "$api/$id/actions/publish" | jq -er '.doi')
           call 200 "$api/$id" | jq -e --arg doi "$doi" '.state == "done" and .doi == $doi and .conceptdoi != null'
+          conceptdoi=$(call 200 "$api/$id" | jq -er '.conceptdoi')
 
+          # A new version: same concept DOI, new DOI once its files change.
+          draft=$(call 201 -X POST "$api/$id/actions/newversion" | jq -er '.links.latest_draft | split("/") | last')
+          call 400 -X POST "$api/$draft/actions/publish" | jq -e '.message | startswith("New version")'
+          printf 'feature data v2' > "$RUNNER_TEMP/model-v2.uvl"
+          call 201 -X POST -F "file=@$RUNNER_TEMP/model-v2.uvl" "$api/$draft/files" > /dev/null
+          call 202 -X POST "$api/$draft/actions/publish" \
+            | jq -e --arg doi "$doi" --arg concept "$conceptdoi" '.doi != $doi and .conceptdoi == $concept and .version == 2'
+
+          call 204 -X DELETE "$api/$draft"
           call 204 -X DELETE "$api/$id"
           call 404 "$api/$id" | jq -e '.message == "Deposition not found"'
 
