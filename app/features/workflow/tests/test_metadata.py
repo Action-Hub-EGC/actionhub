@@ -1,6 +1,8 @@
 """Workflow metadata extraction tests (#17)."""
 
+import io
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +12,7 @@ from app.features.dataset.models import DSMetaData, PublicationType
 from app.features.workflow.metadata import MetadataError, WorkflowMetadataExtractor
 from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
 from app.features.workflow.services import WorkflowDatasetService
+from app.features.workflow.tests.test_package import make_zip
 
 pytestmark = pytest.mark.service
 
@@ -143,6 +146,43 @@ def test_non_mapping_document_is_rejected():
         extract("- just\n- a list\n")
 
 
+def upload(owner, workflow_yaml):
+    package = SimpleNamespace(read=lambda: make_zip(workflow=workflow_yaml))
+    return WorkflowDatasetService().upload_package(package, owner)
+
+
+def test_uploaded_package_stores_the_metadata_of_its_version(test_app, test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    with test_app.app_context():
+        owner = UserRepository().create(email="metadata-upload@example.com", password="secret")
+
+        dataset, issues = upload(owner, CI_WORKFLOW)
+
+        assert issues == []
+        version = dataset.latest_version()
+        assert version.metadata_json is not None
+        assert version.workflow_metadata["triggers"] == ["push", "pull_request", "workflow_dispatch"]
+        assert dataset.workflow_metadata()["runners"] == ["ubuntu-latest", "windows-latest", "macos-latest"]
+
+
+def test_rejected_package_stores_no_metadata(test_app, test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    with test_app.app_context():
+        owner = UserRepository().create(email="metadata-rejected@example.com", password="secret")
+        before = WorkflowVersion.query.count()
+
+        dataset, issues = upload(owner, "- just\n- a list\n")
+
+        assert dataset is None
+        assert issues
+        assert WorkflowVersion.query.count() == before
+
+
+def test_metadata_json_for_a_non_mapping_document_is_none(test_app):
+    with test_app.app_context():
+        assert WorkflowDatasetService().metadata_json_for("- just\n- a list\n") is None
+
+
 def make_version(owner_id, workflow_yaml):
     meta = DSMetaData(title="Metadata workflow", description="#17 fixture", publication_type=PublicationType.NONE)
     db.session.add(meta)
@@ -156,43 +196,58 @@ def make_version(owner_id, workflow_yaml):
     return version
 
 
-def test_validated_version_persists_its_metadata(test_app, test_client):
+def test_validating_a_version_does_not_extract_metadata(test_app, test_client):
     with test_app.app_context():
-        owner = UserRepository().create(email="metadata-valid@example.com", password="secret")
+        owner = UserRepository().create(email="metadata-l1@example.com", password="secret")
         version = make_version(owner.id, CI_WORKFLOW)
-
-        WorkflowDatasetService().validate_l1_version(version)
-
-        stored = db.session.get(WorkflowVersion, version.id)
-        assert stored.workflow_metadata["triggers"] == ["push", "pull_request", "workflow_dispatch"]
-        assert stored.workflow_dataset.workflow_metadata()["runners"] == [
-            "ubuntu-latest",
-            "windows-latest",
-            "macos-latest",
-        ]
-
-
-def test_failed_version_has_no_metadata(test_app, test_client):
-    with test_app.app_context():
-        owner = UserRepository().create(email="metadata-invalid@example.com", password="secret")
-        version = make_version(owner.id, "name: first\nname: second\n")
 
         WorkflowDatasetService().validate_l1_version(version)
 
         assert version.metadata_json is None
+
+
+def test_validating_a_list_document_does_not_fail(test_app, test_client):
+    with test_app.app_context():
+        owner = UserRepository().create(email="metadata-list@example.com", password="secret")
+        version = make_version(owner.id, "- just\n- a list\n")
+
+        WorkflowDatasetService().validate_l1_version(version)
+
         assert version.workflow_metadata is None
 
 
-def test_detail_page_shows_the_metadata(test_app, test_client):
+def test_detail_page_shows_the_metadata_of_a_package_uploaded_through_the_route(test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    test_client.post(
+        "/signup/",
+        data={"email": "metadata-ui@example.com", "password": "secret", "name": "Ada", "surname": "Lovelace"},
+        follow_redirects=False,
+    )
+
+    upload_response = test_client.post(
+        "/workflow/upload",
+        data={"package": (io.BytesIO(make_zip(workflow=CI_WORKFLOW)), "workflow.zip")},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    assert upload_response.status_code == 302
+
+    response = test_client.get(upload_response.headers["Location"])
+
+    assert response.status_code == 200
+    assert "Qué hace este workflow".encode() in response.data
+    assert b"pull_request" in response.data
+    assert b"actions/setup-python@v5" in response.data
+    assert b"windows-latest" in response.data
+    assert b"no tiene metadatos" not in response.data
+
+
+def test_detail_page_without_metadata_shows_the_fallback(test_app, test_client):
     with test_app.app_context():
-        owner = UserRepository().create(email="metadata-ui@example.com", password="secret")
-        version = make_version(owner.id, CI_WORKFLOW)
-        WorkflowDatasetService().validate_l1_version(version)
-        dataset_id = version.workflow_dataset_id
+        owner = UserRepository().create(email="metadata-legacy@example.com", password="secret")
+        dataset_id = make_version(owner.id, CI_WORKFLOW).workflow_dataset_id
 
     response = test_client.get(f"/workflow/{dataset_id}")
 
     assert response.status_code == 200
-    assert b"pull_request" in response.data
-    assert b"actions/setup-python@v5" in response.data
-    assert b"windows-latest" in response.data
+    assert b"no tiene metadatos" in response.data
