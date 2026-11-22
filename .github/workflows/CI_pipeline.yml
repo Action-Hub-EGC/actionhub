@@ -168,6 +168,12 @@ jobs:
           wait_healthy
           call 200 "$api/$id" | jq -e '.metadata.title == "CI smoke test"'
 
+          call 400 -X POST "$api/$id/actions/publish" | jq -e '.message == "Minimum one file must be provided."'
+          printf 'feature data' > "$RUNNER_TEMP/model.uvl"
+          call 201 -X POST -F "file=@$RUNNER_TEMP/model.uvl" "$api/$id/files" | jq -e '.filename == "model.uvl"'
+          doi=$(call 202 -X POST "$api/$id/actions/publish" | jq -er '.doi')
+          call 200 "$api/$id" | jq -e --arg doi "$doi" '.state == "done" and .doi == $doi and .conceptdoi != null'
+
           call 204 -X DELETE "$api/$id"
           call 404 "$api/$id" | jq -e '.message == "Deposition not found"'
 
