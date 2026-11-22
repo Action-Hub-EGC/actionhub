@@ -145,3 +145,18 @@ def test_store_adds_conceptdoi_column_to_old_databases(tmp_path):
 
     assert store.get(1)["conceptdoi"] is None
     assert store.publish(1)["conceptdoi"] == "10.5072/fakenodo.concept.1"
+
+
+def test_new_version_returns_none_for_unknown_deposition(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+
+    assert store.new_version(999) is None
+
+
+def test_list_versions_returns_only_the_concept_in_version_order(tmp_path):
+    store = DepositionStore(tmp_path / "fakenodo.sqlite3")
+    store.create(1, state="done", files=[{"checksum": "md5:a"}])
+    store.create(2, conceptrecid=1, version=2)
+    store.create(3)
+
+    assert [deposition["id"] for deposition in store.list_versions(1)] == [1, 2]

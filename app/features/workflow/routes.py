@@ -50,6 +50,7 @@ def detail(dataset_id):
             "workflow/detail.html",
             workflow=workflow,
             versions=workflow_service.versions_for(dataset_id),
+            workflow_metadata=workflow.workflow_metadata(),
             counts=counter_service.counts(dataset_id),
         )
     )

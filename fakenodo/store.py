@@ -12,7 +12,11 @@ from typing import Any, Iterable
 DOI_PREFIX = "10.5072"
 
 
-class PublishError(ValueError):
+class DepositionError(ValueError):
+    """Raised when an action is not allowed in the deposition's current state."""
+
+
+class PublishError(DepositionError):
     """Raised when a deposition cannot be published."""
 
 
@@ -151,6 +155,15 @@ class DepositionStore:
     def all(self) -> list[dict[str, Any]]:
         return self.list()
 
+    def list_versions(self, conceptrecid: int) -> list[dict[str, Any]]:
+        """Return every deposition of a concept, oldest version first."""
+        with self._lock, self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM depositions WHERE conceptrecid = ? ORDER BY version, id",
+                (conceptrecid,),
+            ).fetchall()
+        return [self._row_to_deposition(row) for row in rows]
+
     def update(self, deposition_id: int, **changes: Any) -> dict[str, Any] | None:
         allowed = {
             "conceptrecid": "conceptrecid",
@@ -196,11 +209,12 @@ class DepositionStore:
         """Move a deposition to ``done`` and assign it a fake DOI.
 
         The DOI is ``10.5072/fakenodo.<id>``, unique because the id is. The
-        concept DOI is set only on the first publish of the concept. Returns
-        ``None`` if the deposition does not exist and raises ``PublishError``
-        if it is already published or has no files, as Zenodo does. The check
-        and the update share the store lock, so two concurrent publishes
-        cannot both succeed.
+        concept DOI is set only on the first publish of the concept; later
+        versions inherit it. Returns ``None`` if the deposition does not exist
+        and raises ``PublishError`` if it is already published, has no files
+        or, as Zenodo does, has the same files as a published version of its
+        concept. The check and the update share the store lock, so two
+        concurrent publishes cannot both succeed.
         """
         with self._lock:
             deposition = self.get(deposition_id)
@@ -211,6 +225,11 @@ class DepositionStore:
             if not deposition["files"]:
                 raise PublishError("Minimum one file must be provided.")
 
+            content = self._files_content(deposition["files"])
+            for other in self.list_versions(deposition["conceptrecid"]):
+                if other["state"] == "done" and self._files_content(other["files"]) == content:
+                    raise PublishError("New version's files must differ from all previous versions.")
+
             changes: dict[str, Any] = {
                 "state": "done",
                 "doi": f"{DOI_PREFIX}/fakenodo.{deposition_id}",
@@ -218,6 +237,42 @@ class DepositionStore:
             if not deposition["conceptdoi"]:
                 changes["conceptdoi"] = f"{DOI_PREFIX}/fakenodo.concept.{deposition['conceptrecid']}"
             return self.update(deposition_id, **changes)
+
+    @staticmethod
+    def _files_content(files: list[dict[str, Any]]) -> list[str]:
+        """What identifies a set of files: their checksums, ignoring order."""
+        return sorted(str(file.get("checksum") or file.get("filename")) for file in files)
+
+    def new_version(self, deposition_id: int) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """Create a draft for the next version of a published deposition.
+
+        The draft shares ``conceptrecid`` and ``conceptdoi``, has no DOI until
+        it is published and starts with the metadata and files of the latest
+        published version, so newversion on an old version still builds on the
+        newest one. A concept has at most one draft: if it already exists, it
+        is returned instead of creating another. Returns ``(source, draft)``,
+        or ``None`` if the deposition does not exist, and raises
+        ``DepositionError`` if it is not published.
+        """
+        with self._lock:
+            source = self.get(deposition_id)
+            if source is None:
+                return None
+            if source["state"] != "done":
+                raise DepositionError("Only published depositions can have a new version")
+
+            versions = self.list_versions(source["conceptrecid"])
+            draft = next((version for version in versions if version["state"] == "unsubmitted"), None)
+            if draft is None:
+                latest = [version for version in versions if version["state"] == "done"][-1]
+                draft = self.create(
+                    conceptrecid=source["conceptrecid"],
+                    conceptdoi=source["conceptdoi"],
+                    metadata=latest["metadata"],
+                    files=latest["files"],
+                    version=max(version["version"] for version in versions) + 1,
+                )
+            return source, draft
 
     def delete(self, deposition_id: int) -> bool:
         with self._lock, self._connection() as connection:

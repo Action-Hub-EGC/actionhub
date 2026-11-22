@@ -239,7 +239,7 @@ Por tanto, las métricas se nombran `visits` y `downloads`, no `page_views` ni `
 - **Deduplicación garantizada en la base de datos.** `ds_download_record` y `ds_view_record` tienen una columna generada `user_key = COALESCE(user_id, 0)` y un índice único sobre `(user_key, dataset_id, cookie)`. Esto cierra el riesgo de concurrencia del acta 2026-08.
   - La columna generada hace falta porque MariaDB no trata dos `NULL` como iguales en un índice único, y sin ella los anónimos no quedarían cubiertos.
   - `record_once()` sigue consultando antes de insertar. Si dos peticiones simultáneas insertan la misma fila, la segunda recibe `IntegrityError` y se toma como «ya registrada».
-  - La migración `004` borra antes los duplicados existentes y conserva la fila más antigua de cada grupo.
+  - La migración `005` borra antes los duplicados existentes y conserva la fila más antigua de cada grupo.
 - Las filas con `dataset_id` a `NULL` no cuentan para ningún dataset ni para los totales globales de la portada (`total_dataset_downloads()` y `total_dataset_views()`), así que la suma de las fichas coincide con la portada.
 
 ### 6.4. Registros sin recurso vivo
