@@ -477,6 +477,7 @@ def test_delete_file_rejects_published_deposition_and_unknown_file(fakenodo_clie
     assert unknown.status_code == 404
     assert unknown.get_json() == {"message": "File not found"}
 
+
 def test_list_depositions_is_empty_initially_and_excludes_deleted_items(fakenodo_client):
     empty_response = fakenodo_client.get(DEPOSITIONS_URL)
     assert empty_response.status_code == 200
