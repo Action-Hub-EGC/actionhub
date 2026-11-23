@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import case, desc, func
 
@@ -8,6 +8,55 @@ from app.features.dataset.models import BaseDataset, DSDownloadRecord, DSMetaDat
 from app.features.featuremodel.models import FeatureModel
 from app.features.hubfile.models import Hubfile, HubfileDownloadRecord, HubfileViewRecord
 from app.features.metrics.utils import as_utc
+
+
+class DatasetCounterRepository:
+    """Per-dataset download and view counts (#67).
+
+    A count is the number of ``DSDownloadRecord`` or ``DSViewRecord`` rows of
+    the dataset. Each row is already one (user or anonymous, dataset, browser
+    cookie), so the count follows decision #66 without further deduplication.
+    Rows without ``dataset_id`` never match a dataset and are not counted.
+    Every per-dataset count in the app is built from these two subqueries.
+    """
+
+    @staticmethod
+    def downloads_by_dataset():
+        return (
+            db.session.query(
+                DSDownloadRecord.dataset_id.label("dataset_id"),
+                func.count(DSDownloadRecord.id).label("downloads"),
+            )
+            .filter(DSDownloadRecord.dataset_id.isnot(None))
+            .group_by(DSDownloadRecord.dataset_id)
+            .subquery()
+        )
+
+    @staticmethod
+    def views_by_dataset():
+        return (
+            db.session.query(
+                DSViewRecord.dataset_id.label("dataset_id"),
+                func.count(DSViewRecord.id).label("views"),
+            )
+            .filter(DSViewRecord.dataset_id.isnot(None))
+            .group_by(DSViewRecord.dataset_id)
+            .subquery()
+        )
+
+    def counts(self, dataset_ids: Iterable[int]) -> dict[int, dict[str, int]]:
+        """Counts of the given datasets that have any activity, in two queries."""
+        ids = list(dataset_ids)
+        if not ids:
+            return {}
+        downloads = self.downloads_by_dataset()
+        views = self.views_by_dataset()
+        result: dict[int, dict[str, int]] = {}
+        for row in db.session.query(downloads).filter(downloads.c.dataset_id.in_(ids)):
+            result.setdefault(row.dataset_id, {})["downloads"] = int(row.downloads)
+        for row in db.session.query(views).filter(views.c.dataset_id.in_(ids)):
+            result.setdefault(row.dataset_id, {})["views"] = int(row.views)
+        return result
 
 
 class MetricsRepository:
@@ -129,22 +178,8 @@ class MetricsRepository:
         return max((value for value in normalized if value is not None), default=None)
 
     def workflow_metrics(self, owner_id: int) -> list:
-        dataset_views = (
-            db.session.query(
-                DSViewRecord.dataset_id.label("dataset_id"),
-                func.count(DSViewRecord.id).label("views"),
-            )
-            .group_by(DSViewRecord.dataset_id)
-            .subquery()
-        )
-        dataset_downloads = (
-            db.session.query(
-                DSDownloadRecord.dataset_id.label("dataset_id"),
-                func.count(DSDownloadRecord.id).label("downloads"),
-            )
-            .group_by(DSDownloadRecord.dataset_id)
-            .subquery()
-        )
+        dataset_views = DatasetCounterRepository.views_by_dataset()
+        dataset_downloads = DatasetCounterRepository.downloads_by_dataset()
         file_views = (
             db.session.query(
                 FeatureModel.data_set_id.label("dataset_id"),

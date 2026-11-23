@@ -231,3 +231,43 @@ def test_api_returns_a_single_dataset_or_404(test_client):
     missing = test_client.get(f"/api/v1/datasets/{dataset_id + 999}")
     assert missing.status_code == 404
     assert missing.get_json()["message"] == "DataSet not found"
+
+
+# --- Per-dataset counts (#67) ---
+
+
+def test_dataset_page_shows_unique_views_and_downloads(test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))  # The zip of a dataset without files is empty.
+    user_id = _signup(test_client)
+    with test_client.application.app_context():
+        dataset_id = _make_dataset(user_id, title="Counted", doi="10.1234/counted").id
+
+    # The test client keeps the cookies: the second download and view are the
+    # same browser and must not count again.
+    for _ in range(2):
+        assert test_client.get(f"/dataset/download/{dataset_id}").status_code == 200
+    test_client.get("/doi/10.1234/counted/")
+    body = test_client.get("/doi/10.1234/counted/").get_data(as_text=True)
+
+    assert '<span id="dataset-views">1</span> views' in body
+    assert '<span id="dataset-downloads">1</span> downloads' in body
+    assert "repeated clicks are not counted" in body
+
+
+def test_api_includes_the_counts_of_each_dataset(test_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("WORKING_DIR", str(tmp_path))
+    user_id = _signup(test_client)
+    with test_client.application.app_context():
+        downloaded = _make_dataset(user_id, title="Downloaded", doi="10.1234/downloaded").id
+        untouched = _make_dataset(user_id, title="Untouched").id
+    test_client.get(f"/dataset/download/{downloaded}")
+
+    listing = test_client.get("/api/v1/datasets/").get_json()["items"]
+    single = test_client.get(f"/api/v1/datasets/{downloaded}").get_json()
+
+    counts = {item["dataset_id"]: item["counts"] for item in listing}
+    assert counts == {
+        downloaded: {"downloads": 1, "views": 0},
+        untouched: {"downloads": 0, "views": 0},
+    }
+    assert single["counts"] == {"downloads": 1, "views": 0}

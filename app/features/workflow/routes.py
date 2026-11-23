@@ -1,8 +1,10 @@
 import logging
 
-from flask import abort, flash, jsonify, redirect, render_template, url_for
+from flask import abort, flash, jsonify, make_response, redirect, render_template, url_for
 from flask_login import current_user, login_required
 
+from app.features.dataset.services import DSViewRecordService
+from app.features.metrics.services import DatasetCounterService
 from app.features.workflow import workflow_bp
 from app.features.workflow.forms import WorkflowPackageForm, WorkflowPublishForm
 from app.features.workflow.lifecycle import InvalidTransition, PublicationError, WorkflowPublicationService
@@ -11,6 +13,8 @@ from app.features.workflow.services import WorkflowDatasetService
 logger = logging.getLogger(__name__)
 
 workflow_service = WorkflowDatasetService()
+view_record_service = DSViewRecordService()
+counter_service = DatasetCounterService()
 
 
 @workflow_bp.route("/workflow")
@@ -40,13 +44,20 @@ def upload():
 @workflow_bp.route("/workflow/<int:dataset_id>")
 def detail(dataset_id):
     workflow = workflow_service.get_or_404(dataset_id)
-    return render_template(
-        "workflow/detail.html",
-        workflow=workflow,
-        versions=workflow_service.versions_for(dataset_id),
-        workflow_metadata=workflow.workflow_metadata(),
-        publish_form=WorkflowPublishForm(),
+    # Same view record and cookie as the dataset page, so both count alike (#67).
+    view_cookie = view_record_service.create_cookie(dataset=workflow)
+    response = make_response(
+        render_template(
+            "workflow/detail.html",
+            workflow=workflow,
+            versions=workflow_service.versions_for(dataset_id),
+            workflow_metadata=workflow.workflow_metadata(),
+            counts=counter_service.counts(dataset_id),
+            publish_form=WorkflowPublishForm(),
+        )
     )
+    response.set_cookie("view_cookie", view_cookie, max_age=60 * 60 * 24 * 365 * 2)
+    return response
 
 
 @workflow_bp.route("/workflow/<int:dataset_id>/publish", methods=["POST"])
