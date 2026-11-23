@@ -9,6 +9,7 @@ from splent_framework.services.BaseService import BaseService
 from app.features.dataset.models import Author, DSMetaData, PublicationType
 from app.features.dataset.services import calculate_checksum_and_size
 from app.features.hubfile.models import Hubfile
+from app.features.workflow.lifecycle import transition
 from app.features.workflow.metadata import MetadataError, WorkflowMetadataExtractor
 from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
 from app.features.workflow.package import PackageIssue, PackageValidator
@@ -51,10 +52,11 @@ class WorkflowDatasetService(BaseService):
 
         L1 and L2 are blocking: a failure in either layer sets
         ``validation_status='failed'`` and blocks transition to ``validated``.
+        A published workflow cannot be validated again (``InvalidTransition``, #19).
         """
-        result = L2Validator().validate_text(version.workflow_yaml)
         workflow = version.workflow_dataset
-        workflow.validation_status = ValidationStatus.VALIDATED if result.valid else ValidationStatus.FAILED
+        result = L2Validator().validate_text(version.workflow_yaml)
+        transition(workflow, ValidationStatus.VALIDATED if result.valid else ValidationStatus.FAILED)
         self.repository.session.commit()
         return result
 

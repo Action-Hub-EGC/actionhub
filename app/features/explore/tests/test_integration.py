@@ -85,6 +85,7 @@ def test_explore_page_renders_the_search_form(test_client):
     assert b'name="author"' in response.data
     assert b'name="start_date"' in response.data
     assert b'name="end_date"' in response.data
+    assert b'name="tags"' in response.data
 
 
 def test_explore_page_reads_the_author_from_the_url(test_client):
@@ -100,6 +101,13 @@ def test_explore_page_reads_the_date_range_from_the_url(test_client):
     assert response.status_code == 200
     assert b'value="2024-01-01"' in response.data
     assert b'value="2024-12-31"' in response.data
+
+
+def test_explore_page_reads_the_tags_from_the_url(test_client):
+    response = test_client.get("/explore?tags=iot,home")
+
+    assert response.status_code == 200
+    assert b'value="iot,home"' in response.data
 
 
 def test_search_returns_only_the_matching_datasets(test_app, test_client):
@@ -153,6 +161,22 @@ def test_search_honours_the_date_range(test_app, test_client):
     )
     assert response.status_code == 200
     assert [dataset["title"] for dataset in response.get_json()] == ["Car Configurator"]
+
+
+def test_search_honours_one_or_several_tags(test_app, test_client):
+    _seed_corpus(test_app)
+
+    one_tag = test_client.post("/explore", json={"tags": ["iot"]})
+    assert [dataset["title"] for dataset in one_tag.get_json()] == ["Smart Home"]
+
+    several_tags = test_client.post("/explore", json={"tags": ["automotive", "finance"]})
+    assert [dataset["title"] for dataset in several_tags.get_json()] == [
+        "Home Banking",
+        "Car Configurator",
+    ]
+
+    no_match = test_client.post("/explore", json={"tags": ["nonexistent"]})
+    assert no_match.get_json() == []
 
 
 def test_search_returns_an_empty_list_when_nothing_matches(test_app, test_client):

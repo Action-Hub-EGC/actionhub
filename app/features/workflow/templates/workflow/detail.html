@@ -12,10 +12,24 @@
         <h1 class="h2 mb-1"><b>{{ workflow.ds_meta_data.title }}</b></h1>
         <p class="text-secondary mb-0">{{ workflow.ds_meta_data.description }}</p>
     </div>
-    {% if workflow.grade %}
-    <span class="badge bg-dark fs-5">{{ workflow.grade }}</span>
-    {% endif %}
+    <div class="d-flex align-items-start gap-2">
+        {% if current_user.is_authenticated and current_user.id == workflow.user_id and workflow.validation_status == 'validated' %}
+        <form method="POST" action="{{ url_for('workflow.publish', dataset_id=workflow.id) }}">
+            {{ publish_form.hidden_tag() }}
+            {{ publish_form.submit(class_="btn btn-primary") }}
+        </form>
+        {% endif %}
+        {% if workflow.grade %}
+        <span class="badge bg-dark fs-5">{{ workflow.grade }}</span>
+        {% endif %}
+    </div>
 </div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% for category, message in messages %}
+<div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+{% endfor %}
+{% endwith %}
 
 <div class="row">
     <div class="col-12 col-lg-8">
@@ -25,6 +39,9 @@
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Estado de validación</dt>
                     <dd class="col-sm-8">{{ workflow.validation_status }}</dd>
+
+                    <dt class="col-sm-4">DOI</dt>
+                    <dd class="col-sm-8">{{ workflow.ds_meta_data.dataset_doi or 'Sin publicar' }}</dd>
 
                     <dt class="col-sm-4">Puntuación de seguridad</dt>
                     <dd class="col-sm-8">{{ workflow.security_score if workflow.security_score is not none else '—' }}</dd>
