@@ -86,7 +86,31 @@ Un paquete válido se guarda como **borrador no publicado**:
 - Un `Hubfile` por archivo del paquete, con `workflow_version_id`.
 - Los archivos se copian a `uploads/user_<id>/dataset_<id>/`.
 
-La publicación con DOI llega en #19/#31.
+La publicación con DOI se describe en «Ciclo de vida».
+
+## Ciclo de vida
+
+Desde #19, `WorkflowDataset.validation_status` sigue este ciclo (`app/features/workflow/lifecycle.py`):
+
+| Desde | Hacia | Cuándo |
+|---|---|---|
+| `draft` | `validated` / `failed` | Al validar la versión: L1 + L2 (`validate_l2_version`, o `upload_package`, que guarda directamente en `validated`) |
+| `failed` | `validated` / `failed` | Al volver a validar |
+| `validated` | `validated` / `failed` | Al volver a validar |
+| `validated` | `published` | Al publicar con DOI |
+| `published` | — | Ninguna: un workflow publicado es inmutable. Una versión nueva es WI-196 |
+
+Cualquier otra transición (por ejemplo `draft` → `published`, o validar un workflow publicado) lanza `InvalidTransition` y no cambia nada. L4 (#18) añadirá su calificación de seguridad en el paso a `validated`.
+
+**Publicar.** El propietario pulsa «Publicar con DOI» en la ficha (`POST /workflow/<id>/publish`). `WorkflowPublicationService.publish`:
+
+1. comprueba que el workflow está `validated` y que su última versión tiene archivos;
+2. crea la deposition (`POST /depositions`) y guarda `deposition_id` en `DSMetaData`;
+3. sube los archivos de la última versión (`POST /depositions/{id}/files`). Zenodo no admite `/` en el nombre, así que `fixtures/input.txt` se sube como `fixtures__input.txt`;
+4. publica (`POST /depositions/{id}/actions/publish`) y lee el DOI (`GET /depositions/{id}`);
+5. guarda el DOI en `DSMetaData.dataset_doi` y pasa a `published`.
+
+Si falla cualquier paso, el workflow sigue en `validated` y sin DOI, el usuario ve un mensaje genérico y el detalle queda en el log. Se puede reintentar. El destino es el que marque `ZENODO_API_URL`: con fakenodo, el DOI es `10.5072/fakenodo.<id>`. Solo el propietario puede publicar (`403` para el resto).
 
 ## Metadatos del workflow
 
@@ -119,6 +143,7 @@ Desde #17, cada `WorkflowVersion` guarda en `workflow_version.metadata_json` (te
 ## Referencias
 
 - `app/features/workflow/package.py`
+- `app/features/workflow/lifecycle.py`
 - `app/features/workflow/validation.py`
 - `app/features/workflow/metadata.py`
 - `app/features/workflow/schemas/actionhub.schema.json`
@@ -129,3 +154,4 @@ Desde #17, cada `WorkflowVersion` guarda en `workflow_version.metadata_json` (te
 - `app/features/workflow/tests/test_validation.py`
 - `app/features/workflow/tests/test_metadata.py`
 - `migrations/versions/004.py`
+- `app/features/workflow/tests/test_lifecycle.py`
