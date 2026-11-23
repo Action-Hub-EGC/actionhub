@@ -6,10 +6,11 @@ import uuid
 from typing import Optional
 
 from flask import current_app, request
+from flask_login import current_user
 from splent_framework.services.BaseService import BaseService
 
 from app.features.auth.services import AuthenticationService
-from app.features.dataset.models import BaseDataset, DSMetaData, DSViewRecord, UVLDataset
+from app.features.dataset.models import BaseDataset, DSMetaData, UVLDataset
 from app.features.dataset.repositories import (
     AuthorRepository,
     DataSetRepository,
@@ -273,19 +274,14 @@ class DSDownloadRecordService(BaseService):
     def __init__(self):
         super().__init__(DSDownloadRecordRepository())
 
-    def record_download(self, user, dataset_id: int, cookie: str) -> None:
-        """Record a download once per (user/anonymous, dataset, cookie) tuple."""
-        from datetime import datetime, timezone
+    def record_download(self, user, dataset_id: int, cookie: str) -> bool:
+        """Record a download once per (user/anonymous, dataset, cookie) tuple.
 
+        Returns True if this download was counted. The unique index on the
+        table also holds under concurrent requests (#67).
+        """
         user_id = user.id if user.is_authenticated else None
-        if self.repository.find_by_user_dataset_cookie(user_id, dataset_id, cookie):
-            return
-        self.create(
-            user_id=user_id,
-            dataset_id=dataset_id,
-            download_date=datetime.now(timezone.utc),
-            download_cookie=cookie,
-        )
+        return self.repository.record_once(user_id, dataset_id, cookie)
 
 
 class DSMetaDataService(BaseService):
@@ -303,22 +299,14 @@ class DSViewRecordService(BaseService):
     def __init__(self):
         super().__init__(DSViewRecordRepository())
 
-    def the_record_exists(self, dataset: BaseDataset, user_cookie: str):
-        return self.repository.the_record_exists(dataset, user_cookie)
-
-    def create_new_record(self, dataset: BaseDataset, user_cookie: str) -> DSViewRecord:
-        return self.repository.create_new_record(dataset, user_cookie)
-
     def create_cookie(self, dataset: BaseDataset) -> str:
 
         user_cookie = request.cookies.get("view_cookie")
         if not user_cookie:
             user_cookie = str(uuid.uuid4())
 
-        existing_record = self.the_record_exists(dataset=dataset, user_cookie=user_cookie)
-
-        if not existing_record:
-            self.create_new_record(dataset=dataset, user_cookie=user_cookie)
+        user_id = current_user.id if current_user.is_authenticated else None
+        self.repository.record_once(user_id, dataset.id, user_cookie)
 
         return user_cookie
 

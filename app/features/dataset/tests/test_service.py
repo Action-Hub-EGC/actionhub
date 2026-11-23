@@ -4,6 +4,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 from io import BytesIO
+from types import SimpleNamespace
 from zipfile import ZipFile
 
 import pytest
@@ -126,6 +127,23 @@ def test_record_download_is_recorded_once_per_cookie(test_app, clean_database):
 
         service.record_download(owner, dataset.id, "cookie-b")
         assert service.count() == 2
+
+
+def test_record_download_separates_user_anonymous_cookie_and_dataset(test_app, clean_database):
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Downloadable")
+        other_dataset = _make_dataset(owner, title="Other downloadable")
+        anonymous = SimpleNamespace(is_authenticated=False, id=None)
+        service = DSDownloadRecordService()
+
+        service.record_download(anonymous, dataset.id, "cookie-a")
+        service.record_download(owner, dataset.id, "cookie-a")
+        service.record_download(owner, dataset.id, "cookie-a")
+        service.record_download(owner, dataset.id, "cookie-b")
+        service.record_download(owner, other_dataset.id, "cookie-a")
+
+        assert service.count() == 4
 
 
 def test_create_cookie_registers_a_single_view_per_cookie(test_app, clean_database):

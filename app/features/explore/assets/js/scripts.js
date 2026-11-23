@@ -38,6 +38,10 @@ function send_query() {
                 author: document.querySelector('#author').value,
                 start_date: document.querySelector('#start_date').value,
                 end_date: document.querySelector('#end_date').value,
+                tags: document.querySelector('#tags').value
+                    .split(',')
+                    .map(tag => tag.trim())
+                    .filter(tag => tag !== ''),
                 publication_type: document.querySelector('#publication_type').value,
                 sorting: document.querySelector('[name="sorting"]:checked').value,
             };
@@ -133,6 +137,21 @@ function send_query() {
 
                                     </div>
 
+                                    <div class="row mb-2">
+
+                                        <div class="col-md-4 col-12">
+                                            <span class=" text-secondary">
+                                                Activity
+                                            </span>
+                                        </div>
+                                        <div class="col-md-8 col-12">
+                                            <p class="p-0 m-0" title="Unique per user or anonymous visitor, browser and dataset: repeated clicks are not counted.">
+                                                ${dataset.counts.views} views &middot; ${dataset.counts.downloads} downloads (unique browsers)
+                                            </p>
+                                        </div>
+
+                                    </div>
+
                                     <div class="row">
 
                                         <div class="col-md-4 col-12">
@@ -173,6 +192,9 @@ function sync_url(searchCriteria) {
     if (searchCriteria.author) params.set('author', searchCriteria.author);
     if (searchCriteria.start_date) params.set('start_date', searchCriteria.start_date);
     if (searchCriteria.end_date) params.set('end_date', searchCriteria.end_date);
+    if (searchCriteria.tags && searchCriteria.tags.length > 0) {
+        params.set('tags', searchCriteria.tags.join(','));
+    }
     if (searchCriteria.publication_type && searchCriteria.publication_type !== 'any') {
         params.set('publication_type', searchCriteria.publication_type);
     }
@@ -227,6 +249,7 @@ function clearFilters() {
 
     document.querySelector('#start_date').value = "";
     document.querySelector('#end_date').value = "";
+    document.querySelector('#tags').value = "";
 
     // Reset the publication type to its default value
     let publicationTypeSelect = document.querySelector('#publication_type');
@@ -253,6 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authorParam = urlParams.get('author');
     const startDateParam = urlParams.get('start_date');
     const endDateParam = urlParams.get('end_date');
+    const tagsParam = urlParams.get('tags');
     const publicationTypeParam = urlParams.get('publication_type');
     const sortingParam = urlParams.get('sorting');
 
@@ -267,6 +291,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (endDateParam) {
         document.getElementById('end_date').value = endDateParam;
+    }
+    if (tagsParam) {
+        document.getElementById('tags').value = tagsParam;
     }
     if (publicationTypeParam) {
         document.getElementById('publication_type').value = publicationTypeParam;

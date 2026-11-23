@@ -12,10 +12,24 @@
         <h1 class="h2 mb-1"><b>{{ workflow.ds_meta_data.title }}</b></h1>
         <p class="text-secondary mb-0">{{ workflow.ds_meta_data.description }}</p>
     </div>
-    {% if workflow.grade %}
-    <span class="badge bg-dark fs-5">{{ workflow.grade }}</span>
-    {% endif %}
+    <div class="d-flex align-items-start gap-2">
+        {% if current_user.is_authenticated and current_user.id == workflow.user_id and workflow.validation_status == 'validated' %}
+        <form method="POST" action="{{ url_for('workflow.publish', dataset_id=workflow.id) }}">
+            {{ publish_form.hidden_tag() }}
+            {{ publish_form.submit(class_="btn btn-primary") }}
+        </form>
+        {% endif %}
+        {% if workflow.grade %}
+        <span class="badge bg-dark fs-5">{{ workflow.grade }}</span>
+        {% endif %}
+    </div>
 </div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% for category, message in messages %}
+<div class="alert alert-{{ category }}" role="alert">{{ message }}</div>
+{% endfor %}
+{% endwith %}
 
 <div class="row">
     <div class="col-12 col-lg-8">
@@ -25,6 +39,9 @@
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Estado de validación</dt>
                     <dd class="col-sm-8">{{ workflow.validation_status }}</dd>
+
+                    <dt class="col-sm-4">DOI</dt>
+                    <dd class="col-sm-8">{{ workflow.ds_meta_data.dataset_doi or 'Sin publicar' }}</dd>
 
                     <dt class="col-sm-4">Puntuación de seguridad</dt>
                     <dd class="col-sm-8">{{ workflow.security_score if workflow.security_score is not none else '—' }}</dd>
@@ -40,7 +57,57 @@
 
                     <dt class="col-sm-4">Creado</dt>
                     <dd class="col-sm-8">{{ workflow.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+
+                    <dt class="col-sm-4">Actividad</dt>
+                    <dd class="col-sm-8" id="workflow-counts"
+                        title="Únicas por usuario o visitante anónimo, navegador y dataset: los clics repetidos no cuentan.">
+                        <span id="workflow-views">{{ counts.views }}</span> visitas ·
+                        <span id="workflow-downloads">{{ counts.downloads }}</span> descargas
+                        <span class="text-secondary">(navegadores únicos)</span>
+                    </dd>
                 </dl>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Qué hace este workflow</h5>
+                {% if workflow_metadata %}
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Disparadores</dt>
+                    <dd class="col-sm-8">
+                        {% for trigger in workflow_metadata.triggers %}<span class="badge bg-primary me-1">{{ trigger }}</span>{% else %}—{% endfor %}
+                    </dd>
+
+                    <dt class="col-sm-4">Runners</dt>
+                    <dd class="col-sm-8">
+                        {% for runner in workflow_metadata.runners %}<code class="me-2">{{ runner }}</code>{% else %}—{% endfor %}
+                    </dd>
+
+                    <dt class="col-sm-4">Acciones usadas</dt>
+                    <dd class="col-sm-8">
+                        {% for action in workflow_metadata.actions %}<code class="d-block">{{ action }}</code>{% else %}—{% endfor %}
+                    </dd>
+
+                    {% if workflow_metadata.reusable_workflows %}
+                    <dt class="col-sm-4">Workflows reutilizables</dt>
+                    <dd class="col-sm-8">
+                        {% for reusable in workflow_metadata.reusable_workflows %}<code class="d-block">{{ reusable }}</code>{% endfor %}
+                    </dd>
+                    {% endif %}
+
+                    <dt class="col-sm-4">Jobs</dt>
+                    <dd class="col-sm-8">
+                        {% for job in workflow_metadata.jobs %}
+                        <div><strong>{{ job.name or job.id }}</strong>
+                            {% if job.matrix %}<span class="badge bg-light text-dark">matriz: {{ job.matrix.keys()|join(', ') }}</span>{% endif %}
+                        </div>
+                        {% else %}—{% endfor %}
+                    </dd>
+                </dl>
+                {% else %}
+                <p class="text-secondary mb-0">Esta versión no tiene metadatos extraídos. Se extraen al subir el paquete.</p>
+                {% endif %}
             </div>
         </div>
 

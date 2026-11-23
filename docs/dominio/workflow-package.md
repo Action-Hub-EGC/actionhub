@@ -1,6 +1,6 @@
 # Formato de paquete de workflow
 
-- **Issue:** #14, #15, #16.
+- **Issues:** #14 (formato y subida), #15 y #16 (validación L1 y L2), #17 (metadatos).
 - **Formato:** un único archivo `.zip`.
 - **Estado:** implementado; validación L1 (sintaxis YAML), L2 (esquema oficial de GitHub Actions) y esquema del manifiesto.
 
@@ -82,11 +82,52 @@ curl -fsSL [https://json.schemastore.org/github-workflow.json](https://json.sche
 Un paquete válido se guarda como **borrador no publicado**:
 
 - `WorkflowDataset` con `validation_status='validated'`, `package_format='zip'` y sin DOI.
-- `WorkflowVersion` con el manifiesto y el YAML del workflow.
+- `WorkflowVersion` con el manifiesto, el YAML del workflow y sus metadatos en `metadata_json` (ver «Metadatos del workflow»).
 - Un `Hubfile` por archivo del paquete, con `workflow_version_id`.
 - Los archivos se copian a `uploads/user_<id>/dataset_<id>/`.
 
-La publicación con DOI llega en #19/#31.
+La publicación con DOI se describe en «Ciclo de vida».
+
+## Ciclo de vida
+
+Desde #19, `WorkflowDataset.validation_status` sigue este ciclo (`app/features/workflow/lifecycle.py`):
+
+| Desde | Hacia | Cuándo |
+|---|---|---|
+| `draft` | `validated` / `failed` | Al validar la versión: L1 + L2 (`validate_l2_version`, o `upload_package`, que guarda directamente en `validated`) |
+| `failed` | `validated` / `failed` | Al volver a validar |
+| `validated` | `validated` / `failed` | Al volver a validar |
+| `validated` | `published` | Al publicar con DOI |
+| `published` | — | Ninguna: un workflow publicado es inmutable. Una versión nueva es WI-196 |
+
+Cualquier otra transición (por ejemplo `draft` → `published`, o validar un workflow publicado) lanza `InvalidTransition` y no cambia nada. L4 (#18) añadirá su calificación de seguridad en el paso a `validated`.
+
+**Publicar.** El propietario pulsa «Publicar con DOI» en la ficha (`POST /workflow/<id>/publish`). `WorkflowPublicationService.publish`:
+
+1. comprueba que el workflow está `validated` y que su última versión tiene archivos;
+2. crea la deposition (`POST /depositions`) y guarda `deposition_id` en `DSMetaData`;
+3. sube los archivos de la última versión (`POST /depositions/{id}/files`). Zenodo no admite `/` en el nombre, así que `fixtures/input.txt` se sube como `fixtures__input.txt`;
+4. publica (`POST /depositions/{id}/actions/publish`) y lee el DOI (`GET /depositions/{id}`);
+5. guarda el DOI en `DSMetaData.dataset_doi` y pasa a `published`.
+
+Si falla cualquier paso, el workflow sigue en `validated` y sin DOI, el usuario ve un mensaje genérico y el detalle queda en el log. Se puede reintentar. El destino es el que marque `ZENODO_API_URL`: con fakenodo, el DOI es `10.5072/fakenodo.<id>`. Solo el propietario puede publicar (`403` para el resto).
+
+## Metadatos del workflow
+
+Desde #17, cada `WorkflowVersion` guarda en `workflow_version.metadata_json` (texto JSON, migración `004`) un resumen de lo que hace el workflow, para poder verlo antes de descargarlo y comparar workflows:
+
+| Campo | Contenido |
+|---|---|
+| `name` | `name` del workflow, o `null` |
+| `triggers` | Eventos de `on`, en sus tres formas: cadena, lista o mapa. También se lee `on` cuando un cargador YAML 1.1 la convierte en `True` |
+| `jobs` | Por job: `id`, `name`, `runs_on`, `matrix`, `actions` de sus pasos y `uses` si llama a un workflow reutilizable |
+| `runners` | Etiquetas de `runs-on` sin repetir: cadena, lista o `group`/`labels`. `${{ matrix.<clave> }}` se resuelve a los valores de la matriz, incluido `include`; si no se puede resolver, se guarda tal cual |
+| `actions` | `uses` de los pasos, sin repetir |
+| `reusable_workflows` | `uses` a nivel de job, sin repetir |
+
+**Cuándo se calculan.** Solo en `upload_package`, después de que el paquete pase todas las validaciones bloqueantes de `PackageValidator` (L1, L2 y la estructura de `workflow.yml`). El cálculo está en un único método, `WorkflowDatasetService.metadata_json_for`. `validate_l1_version` y `validate_l2_version` **no** extraen metadatos, para que no haya un segundo camino que los guarde. Si el documento no es un mapa YAML, el método devuelve `null` en vez de fallar.
+
+**Dónde se muestran.** La ficha `/workflow/<id>` enseña los metadatos de la última versión (`WorkflowDataset.workflow_metadata()`, que usa `latest_version()`) en la tarjeta «Qué hace este workflow». Las versiones subidas antes de la migración `004` tienen `metadata_json = NULL` y la ficha lo indica.
 
 ## Errores habituales
 
@@ -102,10 +143,15 @@ La publicación con DOI llega en #19/#31.
 ## Referencias
 
 - `app/features/workflow/package.py`
+- `app/features/workflow/lifecycle.py`
 - `app/features/workflow/validation.py`
+- `app/features/workflow/metadata.py`
 - `app/features/workflow/schemas/actionhub.schema.json`
 - `app/features/workflow/schemas/github-workflow.schema.json`
 - `app/features/workflow/services.py`
 - `app/features/workflow/routes.py`
 - `app/features/workflow/tests/test_package.py`
 - `app/features/workflow/tests/test_validation.py`
+- `app/features/workflow/tests/test_metadata.py`
+- `migrations/versions/004.py`
+- `app/features/workflow/tests/test_lifecycle.py`

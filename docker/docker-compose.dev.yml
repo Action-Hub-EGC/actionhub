@@ -15,6 +15,7 @@ services:
     depends_on:
       - db
       - selenium-hub
+      - fakenodo
     build:
       context: ../
       dockerfile: docker/images/Dockerfile.dev

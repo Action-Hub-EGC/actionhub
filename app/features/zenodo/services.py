@@ -38,7 +38,8 @@ class ZenodoService(BaseService):
         self.ZENODO_ACCESS_TOKEN = self.get_zenodo_access_token()
         self.ZENODO_API_URL = self.get_zenodo_url()
         self.headers = {"Content-Type": "application/json"}
-        self.params = {"access_token": self.ZENODO_ACCESS_TOKEN}
+        # Optional: fakenodo needs no token, so only send it when there is one.
+        self.params = {"access_token": self.ZENODO_ACCESS_TOKEN} if self.ZENODO_ACCESS_TOKEN else {}
 
     def test_connection(self) -> bool:
         """
@@ -197,6 +198,23 @@ class ZenodoService(BaseService):
         if response.status_code != 201:
             error_message = f"Failed to upload files. Error details: {response.json()}"
             raise Exception(error_message)
+        return response.json()
+
+    def upload_file_from_path(self, deposition_id: int, file_path: str, name: str) -> dict:
+        """
+        Upload a local file to a deposition under ``name``.
+
+        Unlike ``upload_file``, it does not assume a UVL feature model, so any
+        dataset type (for example workflow packages, #19) can use it.
+
+        Returns:
+            dict: The response in JSON format with the details of the uploaded file.
+        """
+        publish_url = f"{self.ZENODO_API_URL}/{deposition_id}/files"
+        with open(file_path, "rb") as file:
+            response = requests.post(publish_url, params=self.params, data={"name": name}, files={"file": file})
+        if response.status_code != 201:
+            raise Exception(f"Failed to upload file {name}. Error details: {response.json()}")
         return response.json()
 
     def publish_deposition(self, deposition_id: int) -> dict:

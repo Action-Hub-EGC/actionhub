@@ -224,6 +224,24 @@ Los registros no son hits. Son **una fila por cookie, recurso y usuario**. Conse
 
 Por tanto, las métricas se nombran `visits` y `downloads`, no `page_views` ni `requests`. En la interfaz se puede aclarar “visitantes únicos por navegador” cuando se muestre el dato agregado.
 
+**Decisión #66 (22/11/2026):** el contador de descargas muestra **descargas únicas por usuario autenticado o anónimo, navegador y dataset**. Se mantiene `DSDownloadRecord` y su deduplicación por `(user_id, dataset_id, download_cookie)`; #67 reutiliza esos registros y añadirá la etiqueta y el tooltip. La decisión completa está en [`ACTA-2026-08`](../diario/ACTA-2026-08.md).
+
+**Implementación #67:**
+
+- **Servicio único.** `DatasetCounterService` (`app/features/metrics/services.py`) devuelve `{"downloads": n, "views": n}` por dataset. `counts_for_many()` resuelve una lista entera con dos consultas, no dos por dataset.
+- **Una sola definición.** Las subconsultas de `DatasetCounterRepository` son también las que usa `MetricsRepository.workflow_metrics()`, así que el perfil y el contador no pueden dar números distintos.
+- **Dónde se usa.**
+  - La ficha del dataset muestra «views (unique browsers)» y «downloads (unique browsers)», con un tooltip que explica la regla.
+  - La ficha del workflow (`/workflow/<id>`) registra la visita igual que la del dataset, con el mismo `DSViewRecord` y la misma cookie, y muestra «visitas · descargas (navegadores únicos)». Las descargas de un workflow seguirán a 0 hasta que tenga ruta de descarga propia: `/dataset/download/<id>` solo sirve datasets UVL.
+  - En explore, cada resultado de `POST /explore` lleva `counts`.
+  - En la API, cada dataset de `GET /api/v1/datasets/` y `GET /api/v1/datasets/<id>` lleva `counts`.
+  - El badge (#213) debe leerlo del mismo servicio.
+- **Deduplicación garantizada en la base de datos.** `ds_download_record` y `ds_view_record` tienen una columna generada `user_key = COALESCE(user_id, 0)` y un índice único sobre `(user_key, dataset_id, cookie)`. Esto cierra el riesgo de concurrencia del acta 2026-08.
+  - La columna generada hace falta porque MariaDB no trata dos `NULL` como iguales en un índice único, y sin ella los anónimos no quedarían cubiertos.
+  - `record_once()` sigue consultando antes de insertar. Si dos peticiones simultáneas insertan la misma fila, la segunda recibe `IntegrityError` y se toma como «ya registrada».
+  - La migración `005` borra antes los duplicados existentes y conserva la fila más antigua de cada grupo.
+- Las filas con `dataset_id` a `NULL` no cuentan para ningún dataset ni para los totales globales de la portada (`total_dataset_downloads()` y `total_dataset_views()`), así que la suma de las fichas coincide con la portada.
+
 ### 6.4. Registros sin recurso vivo
 
 `dataset_id` y `file_id` son nullable, pero las claves foráneas de MariaDB **impiden** borrar un workflow o un archivo que todavía tenga registros: `DataSet.delete()` (`app/features/dataset/models.py:83-85`) falla con `IntegrityError` si hay actividad, porque no existe `ON DELETE CASCADE`. En la práctica no deberían existir huérfanos. Sí pueden existir filas con `dataset_id` o `file_id` a `NULL` si una escritura no valida el recurso.

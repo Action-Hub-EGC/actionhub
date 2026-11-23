@@ -2,6 +2,7 @@ from splent_framework.resources.generic_resource import create_resource
 from splent_framework.serialisers.serializer import Serializer
 
 from app.features.dataset.models import DataSet
+from app.features.metrics.services import DatasetCounterService
 
 file_fields = {"file_id": "id", "file_name": "name", "size": "get_formatted_size"}
 file_serializer = Serializer(file_fields)
@@ -25,6 +26,18 @@ class DataSetResource(_DataSetResource):
     def __init__(self):
         super().__init__()
         self.model_name = "DataSet"
+
+    def get(self, id: int | None = None) -> tuple:
+        """Add each dataset's ``counts`` (#67), in one batch for the whole list."""
+        body, status = super().get(id)
+        if status != 200:
+            return body, status
+
+        items = body["items"] if id is None else [body]
+        counts = DatasetCounterService().counts_for_many(item["dataset_id"] for item in items)
+        for item in items:
+            item["counts"] = counts[item["dataset_id"]]
+        return body, status
 
 
 def init_blueprint_api(api):

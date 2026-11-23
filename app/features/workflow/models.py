@@ -6,6 +6,7 @@ its columns live in ``data_set`` and the discriminator is ``type='workflow'``.
 versions and each version owns its manifest, workflow YAML and package files.
 """
 
+import json
 from datetime import datetime
 
 from app import db
@@ -18,6 +19,7 @@ class ValidationStatus:
     DRAFT = "draft"
     VALIDATED = "validated"
     FAILED = "failed"
+    PUBLISHED = "published"
 
 
 class WorkflowDataset(BaseDataset):
@@ -40,6 +42,11 @@ class WorkflowDataset(BaseDataset):
     def latest_version(self):
         return max(self.versions, key=lambda version: version.created_at, default=None)
 
+    def workflow_metadata(self):
+        """Metadata of the latest version, for listings and the detail page."""
+        latest = self.latest_version()
+        return latest.workflow_metadata if latest else None
+
 
 class WorkflowVersion(db.Model):
     """One published version of a workflow package."""
@@ -50,9 +57,15 @@ class WorkflowVersion(db.Model):
     workflow_dataset_id = db.Column(db.Integer, db.ForeignKey("data_set.id"), nullable=False)
     manifest_json = db.Column(db.Text, nullable=False)
     workflow_yaml = db.Column(db.Text, nullable=False)
+    metadata_json = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     files = db.relationship("Hubfile", backref="workflow_version", lazy=True, cascade="all, delete")
+
+    @property
+    def workflow_metadata(self):
+        """Extracted metadata (#17) as a dict, or ``None`` if not extracted yet."""
+        return json.loads(self.metadata_json) if self.metadata_json else None
 
     def __repr__(self):
         return f"WorkflowVersion<{self.id}>"
