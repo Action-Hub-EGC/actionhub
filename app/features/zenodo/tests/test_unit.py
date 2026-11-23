@@ -60,7 +60,12 @@ def test_access_token_is_read_from_the_environment(monkeypatch):
     assert service.headers == {"Content-Type": "application/json"}
 
 
-def test_missing_access_token_leaves_the_param_empty(monkeypatch):
+def test_missing_access_token_sends_no_token_param(monkeypatch):
     service = _service(monkeypatch, FLASK_ENV="development")
     assert service.ZENODO_ACCESS_TOKEN is None
-    assert service.params == {"access_token": None}
+    assert service.params == {}
+
+
+def test_empty_access_token_sends_no_token_param(monkeypatch):
+    service = _service(monkeypatch, FLASK_ENV="development", ZENODO_ACCESS_TOKEN="")
+    assert service.params == {}
