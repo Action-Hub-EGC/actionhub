@@ -38,6 +38,10 @@ function send_query() {
                 author: document.querySelector('#author').value,
                 start_date: document.querySelector('#start_date').value,
                 end_date: document.querySelector('#end_date').value,
+                tags: document.querySelector('#tags').value
+                    .split(',')
+                    .map(tag => tag.trim())
+                    .filter(tag => tag !== ''),
                 publication_type: document.querySelector('#publication_type').value,
                 sorting: document.querySelector('[name="sorting"]:checked').value,
             };
@@ -173,6 +177,9 @@ function sync_url(searchCriteria) {
     if (searchCriteria.author) params.set('author', searchCriteria.author);
     if (searchCriteria.start_date) params.set('start_date', searchCriteria.start_date);
     if (searchCriteria.end_date) params.set('end_date', searchCriteria.end_date);
+    if (searchCriteria.tags && searchCriteria.tags.length > 0) {
+        params.set('tags', searchCriteria.tags.join(','));
+    }
     if (searchCriteria.publication_type && searchCriteria.publication_type !== 'any') {
         params.set('publication_type', searchCriteria.publication_type);
     }
@@ -227,6 +234,7 @@ function clearFilters() {
 
     document.querySelector('#start_date').value = "";
     document.querySelector('#end_date').value = "";
+    document.querySelector('#tags').value = "";
 
     // Reset the publication type to its default value
     let publicationTypeSelect = document.querySelector('#publication_type');
@@ -253,6 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authorParam = urlParams.get('author');
     const startDateParam = urlParams.get('start_date');
     const endDateParam = urlParams.get('end_date');
+    const tagsParam = urlParams.get('tags');
     const publicationTypeParam = urlParams.get('publication_type');
     const sortingParam = urlParams.get('sorting');
 
@@ -267,6 +276,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (endDateParam) {
         document.getElementById('end_date').value = endDateParam;
+    }
+    if (tagsParam) {
+        document.getElementById('tags').value = tagsParam;
     }
     if (publicationTypeParam) {
         document.getElementById('publication_type').value = publicationTypeParam;
