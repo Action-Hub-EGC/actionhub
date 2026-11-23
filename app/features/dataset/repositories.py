@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.features.dataset.models import (
     Author,
     BaseDataset,
+    DatasetVersion,
     DOIMapping,
     DSDownloadRecord,
     DSMetaData,
@@ -74,6 +75,18 @@ class DSMetaDataRepository(BaseRepository):
 
     def filter_by_doi(self, doi: str) -> Optional[DSMetaData]:
         return self.model.query.filter_by(dataset_doi=doi).first()
+
+
+class DatasetVersionRepository(BaseRepository):
+    def __init__(self):
+        super().__init__(DatasetVersion)
+
+    def get_by_dataset_and_number(self, dataset_id: int, number: int) -> Optional[DatasetVersion]:
+        return self.model.query.filter_by(dataset_id=dataset_id, number=number).first()
+
+    def next_number(self, dataset_id: int) -> int:
+        last = self.model.query.filter_by(dataset_id=dataset_id).order_by(self.model.number.desc()).first()
+        return (last.number if last else 0) + 1
 
 
 class DSViewRecordRepository(BaseRepository):

@@ -59,6 +59,12 @@ class DSMetrics(db.Model):
 class DSMetaData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     deposition_id = db.Column(db.Integer)
+    # Concept identity shared by every version of the dataset (#36). Zenodo
+    # calls the numeric id ``conceptrecid`` and the DOI ``conceptdoi``. They
+    # belong to the dataset, not to a version, and stay NULL for datasets
+    # published before this column existed until they are recovered.
+    conceptrecid = db.Column(db.Integer)
+    concept_doi = db.Column(db.String(120))
     title = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=False)
     publication_type = db.Column(SQLAlchemyEnum(PublicationType), nullable=False)
@@ -88,11 +94,32 @@ class BaseDataset(db.Model):
     type = db.Column(db.String(20), nullable=False, default="uvl", server_default="uvl")
 
     ds_meta_data = db.relationship("DSMetaData", backref=db.backref("data_set", uselist=False))
+    dataset_versions = db.relationship(
+        "DatasetVersion",
+        backref="dataset",
+        lazy=True,
+        cascade="all, delete",
+        order_by="DatasetVersion.number",
+    )
 
     __mapper_args__ = {"polymorphic_on": type, "polymorphic_identity": "base"}
 
     def name(self):
         return self.ds_meta_data.title
+
+    def latest_dataset_version(self):
+        """Highest version number, published or draft."""
+        return self.dataset_versions[-1] if self.dataset_versions else None
+
+    def latest_published_dataset_version(self):
+        """Highest version with a DOI; ``None`` before the first publication."""
+        published = [version for version in self.dataset_versions if version.doi]
+        return published[-1] if published else None
+
+    def files_for_version(self, version=None):
+        """Files of ``version``, or of the latest published version by default."""
+        version = version or self.latest_published_dataset_version()
+        return version.files() if version is not None else []
 
     def files(self):
         """Files that belong to the dataset. Subclasses override this."""
@@ -161,6 +188,48 @@ class BaseDataset(db.Model):
 
     def __repr__(self):
         return f"{self.__class__.__name__}<{self.id}>"
+
+
+class DatasetVersion(db.Model):
+    """One major version of a dataset (#36).
+
+    The dataset row is the identity users see in the catalogue, the explorer
+    and the metrics. A version holds the deposition, DOI and files of one
+    publication, so publishing a new one never overwrites the previous DOI or
+    its files. UVL and workflow datasets share this table; the type-specific
+    content hangs from ``FeatureModel`` or ``WorkflowVersion``.
+    """
+
+    __tablename__ = "dataset_version"
+    __table_args__ = (db.UniqueConstraint("dataset_id", "number", name="uq_dataset_version_number"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    dataset_id = db.Column(db.Integer, db.ForeignKey("data_set.id"), nullable=False)
+    number = db.Column(db.Integer, nullable=False)
+    deposition_id = db.Column(db.Integer)
+    doi = db.Column(db.String(120))
+    change_note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    published_at = db.Column(db.DateTime)
+
+    feature_models = db.relationship("FeatureModel", backref="dataset_version", lazy=True)
+    workflow_version = db.relationship(
+        "WorkflowVersion",
+        backref=db.backref("dataset_version", uselist=False),
+        uselist=False,
+    )
+
+    def files(self):
+        """Files that belong to this version, for either dataset type."""
+        if self.workflow_version is not None:
+            return list(self.workflow_version.files)
+        return [file for feature_model in self.feature_models for file in feature_model.files]
+
+    def is_published(self):
+        return self.doi is not None
+
+    def __repr__(self):
+        return f"DatasetVersion<dataset={self.dataset_id}, number={self.number}>"
 
 
 class UVLDataset(BaseDataset):

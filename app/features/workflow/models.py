@@ -52,9 +52,17 @@ class WorkflowVersion(db.Model):
     """One published version of a workflow package."""
 
     __tablename__ = "workflow_version"
+    __table_args__ = (db.UniqueConstraint("dataset_version_id", name="uq_workflow_version_dataset_version"),)
 
     id = db.Column(db.Integer, primary_key=True)
     workflow_dataset_id = db.Column(db.Integer, db.ForeignKey("data_set.id"), nullable=False)
+    # Common version of the workflow dataset (#36). One WorkflowVersion is the
+    # content of one DatasetVersion; NULL only on rows created before #36.
+    dataset_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("dataset_version.id", name="fk_workflow_version_dataset_version"),
+        nullable=True,
+    )
     manifest_json = db.Column(db.Text, nullable=False)
     workflow_yaml = db.Column(db.Text, nullable=False)
     metadata_json = db.Column(db.Text)

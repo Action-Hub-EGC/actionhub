@@ -144,7 +144,15 @@ def test_publish_stores_the_fakenodo_doi(test_app, test_client, uploads, fakenod
         deposition_id = stored.ds_meta_data.deposition_id
         assert doi == f"10.5072/fakenodo.{deposition_id}"
         assert stored.ds_meta_data.dataset_doi == doi
+        assert stored.ds_meta_data.conceptrecid == deposition_id
+        assert stored.ds_meta_data.concept_doi == f"10.5072/fakenodo.concept.{deposition_id}"
         assert stored.validation_status == PUBLISHED
+
+        version = stored.latest_dataset_version()
+        assert version.doi == doi
+        assert version.deposition_id == deposition_id
+        assert version.published_at is not None
+        assert version.workflow_version.id == stored.latest_version().id
 
         deposition = fakenodo.store.get(deposition_id)
         assert deposition["state"] == "done"

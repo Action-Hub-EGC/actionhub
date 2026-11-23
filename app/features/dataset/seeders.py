@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from splent_framework.seeders.BaseSeeder import BaseSeeder
 
 from app.features.auth.models import User
-from app.features.dataset.models import Author, DataSet, DSMetaData, DSMetrics, PublicationType
+from app.features.dataset.models import Author, DataSet, DatasetVersion, DSMetaData, DSMetrics, PublicationType
 from app.features.featuremodel.models import FeatureModel, FMMetaData
 from app.features.hubfile.models import Hubfile
 
@@ -66,6 +66,21 @@ class DataSetSeeder(BaseSeeder):
         ]
         seeded_datasets = self.seed(datasets)
 
+        # Every seeded dataset is version 1 (#36). Published seeds copy their
+        # DOI and publication date onto the version.
+        dataset_versions = [
+            DatasetVersion(
+                dataset_id=dataset.id,
+                number=1,
+                deposition_id=dataset.ds_meta_data.deposition_id,
+                doi=dataset.ds_meta_data.dataset_doi,
+                created_at=dataset.created_at,
+                published_at=dataset.created_at if dataset.ds_meta_data.dataset_doi else None,
+            )
+            for dataset in seeded_datasets
+        ]
+        seeded_versions = self.seed(dataset_versions)
+
         # Assume there are 12 UVL files, create corresponding FMMetaData and FeatureModel
         fm_meta_data_list = [
             FMMetaData(
@@ -94,7 +109,11 @@ class DataSetSeeder(BaseSeeder):
         self.seed(fm_authors)
 
         feature_models = [
-            FeatureModel(data_set_id=seeded_datasets[i // 3].id, fm_meta_data_id=seeded_fm_meta_data[i].id)
+            FeatureModel(
+                data_set_id=seeded_datasets[i // 3].id,
+                dataset_version_id=seeded_versions[i // 3].id,
+                fm_meta_data_id=seeded_fm_meta_data[i].id,
+            )
             for i in range(12)
         ]
         seeded_feature_models = self.seed(feature_models)

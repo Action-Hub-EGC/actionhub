@@ -17,6 +17,7 @@ Any other transition raises ``InvalidTransition``.
 """
 
 import logging
+from datetime import datetime
 
 from app import db
 from app.features.hubfile.services import HubfileService
@@ -89,6 +90,7 @@ class WorkflowPublicationService:
             deposition = self.zenodo.create_new_deposition(workflow)
             deposition_id = deposition["id"]
             metadata.deposition_id = deposition_id
+            metadata.conceptrecid = deposition.get("conceptrecid")
             db.session.commit()
 
             for hubfile in version.files:
@@ -98,7 +100,8 @@ class WorkflowPublicationService:
                     self.deposition_filename(hubfile.name),
                 )
             self.zenodo.publish_deposition(deposition_id)
-            doi = self.zenodo.get_doi(deposition_id)
+            published = self.zenodo.get_deposition(deposition_id)
+            doi = published.get("doi")
             if not doi:
                 raise PublicationError("La deposition se publicó sin DOI.")
         except PublicationError:
@@ -110,6 +113,11 @@ class WorkflowPublicationService:
             raise PublicationError("No se pudo publicar el workflow. Inténtalo de nuevo más tarde.") from exc
 
         metadata.dataset_doi = doi
+        metadata.concept_doi = published.get("conceptdoi")
+        if version.dataset_version is not None:
+            version.dataset_version.deposition_id = deposition_id
+            version.dataset_version.doi = doi
+            version.dataset_version.published_at = datetime.utcnow()
         transition(workflow, ValidationStatus.PUBLISHED)
         db.session.commit()
         return doi

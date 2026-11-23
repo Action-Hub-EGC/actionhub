@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import uuid
+from datetime import datetime
 from typing import Optional
 
 from flask import current_app, request
@@ -14,6 +15,7 @@ from app.features.dataset.models import BaseDataset, DSMetaData, UVLDataset
 from app.features.dataset.repositories import (
     AuthorRepository,
     DataSetRepository,
+    DatasetVersionRepository,
     DOIMappingRepository,
     DSDownloadRecordRepository,
     DSMetaDataRepository,
@@ -42,6 +44,7 @@ class DataSetService(BaseService):
         super().__init__(DataSetRepository())
         self.feature_model_repository = FeatureModelRepository()
         self.author_repository = AuthorRepository()
+        self.dataset_version_repository = DatasetVersionRepository()
         self.dsmetadata_repository = DSMetaDataRepository()
         self.fmmetadata_repository = FMMetaDataRepository()
         self.dsdownloadrecord_repository = DSDownloadRecordRepository()
@@ -107,6 +110,15 @@ class DataSetService(BaseService):
             self.repository.session.add(dataset)
             self.repository.session.flush()
 
+            # Every dataset starts at major version 1 (#36). The version is the
+            # owner of the DOI and, from #37 on, of the versioned folder.
+            version = self.dataset_version_repository.create(
+                commit=False,
+                dataset_id=dataset.id,
+                number=1,
+                created_at=dataset.created_at or datetime.utcnow(),
+            )
+
             for feature_model in form.feature_models:
                 uvl_filename = feature_model.uvl_filename.data
                 fmmetadata = self.fmmetadata_repository.create(commit=False, **feature_model.get_fmmetadata())
@@ -115,7 +127,10 @@ class DataSetService(BaseService):
                     fmmetadata.authors.append(author)
 
                 fm = self.feature_model_repository.create(
-                    commit=False, data_set_id=dataset.id, fm_meta_data_id=fmmetadata.id
+                    commit=False,
+                    data_set_id=dataset.id,
+                    dataset_version_id=version.id,
+                    fm_meta_data_id=fmmetadata.id,
                 )
 
                 # associated files in feature model
@@ -210,13 +225,34 @@ class DataSetService(BaseService):
 
         if zenodo_data.get("conceptrecid"):
             deposition_id = zenodo_data.get("id")
-            self.update_dsmetadata(dataset.ds_meta_data_id, deposition_id=deposition_id)
+            version = dataset.latest_dataset_version()
+
+            # The concept identity is kept even if uploading or publishing
+            # fails: a retry (#38) must go back to the same concept.
+            self.update_dsmetadata(
+                dataset.ds_meta_data_id,
+                deposition_id=deposition_id,
+                conceptrecid=zenodo_data.get("conceptrecid"),
+            )
+            if version:
+                version.deposition_id = deposition_id
+                self.repository.session.commit()
+
             try:
                 for feature_model in dataset.feature_models:
                     zenodo.upload_file(dataset, deposition_id, feature_model)
                 zenodo.publish_deposition(deposition_id)
-                deposition_doi = zenodo.get_doi(deposition_id)
-                self.update_dsmetadata(dataset.ds_meta_data_id, dataset_doi=deposition_doi)
+                deposition = zenodo.get_deposition(deposition_id)
+                deposition_doi = deposition.get("doi")
+                self.update_dsmetadata(
+                    dataset.ds_meta_data_id,
+                    dataset_doi=deposition_doi,
+                    concept_doi=deposition.get("conceptdoi"),
+                )
+                if version:
+                    version.doi = deposition_doi
+                    version.published_at = datetime.utcnow() if deposition_doi else None
+                    self.repository.session.commit()
             except Exception as exc:
                 msg = f"could not upload feature models to Zenodo and update DOI: {exc}"
                 # The local dataset already exists; surface a 200 with a warning.

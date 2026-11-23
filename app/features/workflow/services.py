@@ -6,7 +6,7 @@ from datetime import datetime
 
 from splent_framework.services.BaseService import BaseService
 
-from app.features.dataset.models import Author, DSMetaData, PublicationType
+from app.features.dataset.models import Author, DatasetVersion, DSMetaData, PublicationType
 from app.features.dataset.services import calculate_checksum_and_size
 from app.features.hubfile.models import Hubfile
 from app.features.workflow.lifecycle import transition
@@ -106,8 +106,17 @@ class WorkflowDatasetService(BaseService):
             session.add(dataset)
             session.flush()
 
+            dataset_version = DatasetVersion(
+                dataset_id=dataset.id,
+                number=1,
+                created_at=dataset.created_at or datetime.utcnow(),
+            )
+            session.add(dataset_version)
+            session.flush()
+
             version = WorkflowVersion(
                 workflow_dataset_id=dataset.id,
+                dataset_version_id=dataset_version.id,
                 manifest_json=manifest_json,
                 workflow_yaml=result.workflow_yaml,
                 metadata_json=self.metadata_json_for(result.workflow_yaml),
