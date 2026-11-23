@@ -1,0 +1,43 @@
+# ----------------------------------------------------------------------------
+# Branch Traceability (EGCFlow 0 PR)
+# Comprueba el nombre de la rama de tarea y que cada commit no-merge termine
+# con la referencia de una issue. No se ejecuta en trunk ni en main.
+# ----------------------------------------------------------------------------
+name: Branch Traceability
+
+on:
+  push:
+    branches-ignore:
+      - trunk
+      - main
+      - 'migration/**'
+
+jobs:
+  traceability:
+    name: Branch name and issue reference
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check branch name and commit references
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if ! [[ "$BRANCH" =~ ^feature/[0-9]+-[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "::error::La rama '$BRANCH' debe seguir feature/<WI>-<slug> (p. ej. feature/177-switch)."
+            exit 1
+          fi
+
+          failed=0
+          while IFS=$'\t' read -r sha subject; do
+            if ! [[ "$subject" =~ \(#[0-9]+\)$ ]]; then
+              echo "::error::El commit ${sha:0:7} no termina con '(#issue)': $subject"
+              failed=1
+            fi
+          done < <(git log --no-merges --format='%H%x09%s' "origin/trunk..HEAD")
+
+          exit $failed

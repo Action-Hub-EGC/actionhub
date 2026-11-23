@@ -6,12 +6,12 @@ Proyecto de la asignatura **Evolución y Gestión de la Configuración (EGC) 202
 
 ## Estado
 
-En desarrollo. Hito actual: **M1 · Dominio** (18 de noviembre de 2026).
+En desarrollo. Hito actual: **M2 · Producto** (23 de noviembre de 2026).
 
 ## Enlaces
 
 - [Tablero del proyecto](https://github.com/orgs/Action-Hub-EGC/projects/1)
-- [Acta fundacional](docs/acta-fundacional/)
+- [Acta fundacional](docs/acta-fundacional/) · [versión pública sin firmas](docs/acta-fundacional/acta-fundacional-publica.pdf)
 - [Diario del equipo](docs/diario/)
 - [Decisiones de arquitectura](docs/adr/)
 - [fakenodo: Zenodo simulado para desarrollo](fakenodo/README.md)
@@ -58,9 +58,8 @@ docker compose -f docker/docker-compose.dev.yml exec web \
   pytest app/features/ --ignore-glob='*selenium*'
 
 # Estilo y formato
-docker compose -f docker/docker-compose.dev.yml exec web flake8 app rosemary fakenodo
+docker compose -f docker/docker-compose.dev.yml exec web ruff check app rosemary fakenodo
 docker compose -f docker/docker-compose.dev.yml exec web black --check app rosemary fakenodo
-docker compose -f docker/docker-compose.dev.yml exec web isort --check-only app rosemary fakenodo
 
 # Migraciones y datos de ejemplo
 docker compose -f docker/docker-compose.dev.yml exec web flask db upgrade
@@ -78,7 +77,7 @@ migrations/     migraciones de Alembic
 scripts/        espera de base de datos y utilidades
 tests/          pruebas
 docs/           documentación del equipo
-.github/        CI y plantillas de issues y PR
+.github/        CI y plantillas de issues
 ```
 
 ## Ramas
@@ -90,7 +89,7 @@ Se usa **EGCFlow**:
 - `feature/<WI>-<slug>`: una tarea, vida máxima de tres días.
 - `hotfix/<slug>`: corrección urgente sobre `main`.
 
-No se crean ramas por persona. Las ramas se actualizan a diario sobre `trunk` y se eliminan al fusionarse. Los detalles están en [CONTRIBUTING.md](CONTRIBUTING.md).
+No se crean ramas por persona. Las ramas se actualizan a diario sobre `trunk` y se eliminan al fusionarse. **No se usan pull requests**: la revisión se registra en la issue y la integración es directa tras el CI verde. Los detalles están en [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Work items
 

@@ -3,12 +3,7 @@ name: CI pipeline
 on:
   push:
     branches:
-      - main
-      - trunk
-  pull_request:
-    branches:
-      - main
-      - trunk
+      - '**'
 
 jobs:
   commits:
@@ -108,6 +103,7 @@ jobs:
     name: Fakenodo image
     runs-on: ubuntu-24.04
     needs: lint
+    if: github.ref_name == 'trunk' || github.ref_name == 'main'
 
     env:
       FAKENODO_URL: http://localhost:8000
@@ -195,6 +191,7 @@ jobs:
     name: Build Docker image
     runs-on: ubuntu-24.04
     needs: test
+    if: github.ref_name == 'trunk' || github.ref_name == 'main'
 
     steps:
       - name: Checkout

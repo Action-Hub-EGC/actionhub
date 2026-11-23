@@ -6,9 +6,9 @@ Este documento recoge las reglas de trabajo del equipo. Si algo no está aquí, 
 
 | Rama | Origen | Destino | Vida | Protección |
 | --- | --- | --- | --- | --- |
-| `main` | — | — | Permanente | PR, dos aprobaciones, CI verde, sin push directo |
-| `trunk` | `main` | `main` | Permanente | CI verde, sin force-push |
-| `feature/<WI>-<slug>` | `trunk` | `trunk` | Máximo 3 días | CI verde en la rama |
+| `main` | — | — | Permanente | Release directa desde `trunk`, tag, CI verde, sin force-push |
+| `trunk` | `main` | `main` | Permanente | Integración directa de ramas revisadas, CI verde, sin force-push |
+| `feature/<WI>-<slug>` | `trunk` | `trunk` | Máximo 3 días | Revisión en issue y CI verde en la rama |
 | `hotfix/<slug>` | `main` | `main` y `trunk` | Máximo 24 horas | CI verde y revisión |
 
 Reglas:
@@ -17,7 +17,7 @@ Reglas:
 - No se crean ramas por persona.
 - La rama se actualiza a diario sobre `trunk` (`git rebase origin/trunk`).
 - La rama se borra al fusionarse.
-- `trunk` se integra en `main` cada dos semanas mediante PR de release y etiqueta.
+- `trunk` se integra en `main` cada dos semanas con merge directo y etiqueta; no se usa PR de release.
 
 Ejemplos: `feature/72-repo-setup`, `feature/178-workflow-model`, `hotfix/doi-null`.
 
@@ -41,26 +41,35 @@ docs(repo): add contributing guide and templates (#72)
 
 Un commit, un cambio lógico. Asunto de hasta 72 caracteres. Cuerpo cuando el porqué no sea evidente.
 
-## Pull requests
+## Integración sin pull requests (EGCFlow 0 PR)
 
-EGCFlow no exige PR para cada cambio menor en `trunk`. Se exige PR cuando el cambio:
+El equipo **no usa pull requests**, tampoco para `main`. El control se hace en la issue y en el CI.
 
-- incluye una migración de base de datos;
-- modifica workflows de CI/CD;
-- toca autenticación, permisos o validación;
-- supera 400 líneas netas;
-- afecta a otro equipo o al tutor.
+1. El autor trabaja en una rama `feature/<WI>-<slug>` creada desde `trunk`.
+2. Al terminar, mueve la issue a **In review** y asigna un revisor distinto del autor.
+3. El revisor examina `git diff trunk...<rama>` en un máximo de 48 horas y deja un comentario con la plantilla de revisión.
+4. El autor rebasa la rama sobre `trunk`, comprueba el CI en verde y hace merge directo con historia lineal.
+5. Borra la rama, cierra la issue citando el commit de integración y actualiza el tablero.
 
-El resto se revisa por pares antes de fusionar y se deja constancia en el issue.
+La revisión debe quedar registrada en la issue. No se acepta una plantilla dentro de un bloque de código, ni que el autor de la issue o de los commits se apruebe a sí mismo. Si el revisor pide cambios, la issue vuelve a **In progress**.
 
-Todo PR debe:
+### Plantilla de revisión en la issue
 
-- estar enlazado con su issue (`Closes #N`);
-- pasar el CI;
-- incluir pruebas o justificar por qué no las lleva;
-- actualizar la documentación si cambia el comportamiento;
-- no incluir secretos, `.env` ni credenciales.
+```markdown
+## Revisión de `feature/<WI>-<slug>`
 
+- [x] Legibilidad y estilo (ruff, black)
+- [x] Pruebas incluidas, con casos límite
+- [x] CI en verde
+- [x] Sin secretos
+- [x] Commits con Conventional Commits y referencia a la issue
+- [x] La rama se ha rebasado sobre trunk
+
+**Resultado:** ✅ Aprobado
+
+**Comentarios:**
+...
+```
 ## Definición de listo (DoR)
 
 Un issue está listo cuando tiene:
@@ -83,7 +92,7 @@ Una tarea está terminada cuando:
 - el CI está verde;
 - la documentación o el changelog están actualizados;
 - la revisión está registrada;
-- el issue se cierra con evidencia (PR, captura o enlace).
+- el issue se cierra con evidencia (commit, captura o enlace).
 
 ## Etiquetas
 
@@ -116,14 +125,13 @@ Antes de subir una rama:
 ```bash
 docker compose -f docker/docker-compose.dev.yml exec web \
   pytest app/features/ --ignore-glob='*selenium*'
-docker compose -f docker/docker-compose.dev.yml exec web flake8 app rosemary fakenodo
+docker compose -f docker/docker-compose.dev.yml exec web ruff check app rosemary fakenodo
 docker compose -f docker/docker-compose.dev.yml exec web black --check app rosemary fakenodo
-docker compose -f docker/docker-compose.dev.yml exec web isort --check-only app rosemary fakenodo
 ```
 
 ## Comunicación
 
-- Issues y PRs: canal oficial y vinculante.
+- Issues: canal oficial y vinculante.
 - Tablero: https://github.com/orgs/Action-Hub-EGC/projects/1
 - Reunión semanal: lunes a las 18:00.
 - Dudas que bloqueen: se avisan por el issue y por WhatsApp, en ese orden.
