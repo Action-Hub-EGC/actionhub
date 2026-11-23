@@ -6,7 +6,7 @@ Proyecto de la asignatura **Evolución y Gestión de la Configuración (EGC) 202
 
 ## Estado
 
-En desarrollo. Hito actual: **M2 · Producto** (23 de noviembre de 2026).
+En desarrollo. **M2 · Producto** cerrado el 23 de noviembre de 2026; siguiente hito: **M3 · Calidad**.
 
 ## Enlaces
 
