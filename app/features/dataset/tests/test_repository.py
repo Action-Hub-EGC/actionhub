@@ -3,8 +3,10 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.features.auth.repositories import UserRepository
+from app.features.dataset import repositories as dataset_repositories
 from app.features.dataset.models import PublicationType
 from app.features.dataset.repositories import (
     DataSetRepository,
@@ -187,3 +189,130 @@ def test_total_dataset_views_tracks_created_records(test_app, clean_database):
         # Deleting a row lowers the count even though the highest id survives.
         repo.delete(records[0].id)
         assert repo.total_dataset_views() == 1
+
+
+# --- One record per (user or anonymous, dataset, cookie) in the database (#67) ---
+
+
+def _download(repo, user_id, dataset_id, cookie):
+    return repo.create(
+        user_id=user_id,
+        dataset_id=dataset_id,
+        download_date=datetime.now(timezone.utc),
+        download_cookie=cookie,
+    )
+
+
+@pytest.mark.parametrize("anonymous", [False, True])
+def test_the_database_rejects_a_duplicate_download_record(test_app, clean_database, anonymous):
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Downloadable")
+        user_id = None if anonymous else owner.id
+        repo = DSDownloadRecordRepository()
+        _download(repo, user_id, dataset.id, "cookie-a")
+
+        with pytest.raises(IntegrityError):
+            _download(repo, user_id, dataset.id, "cookie-a")
+        repo.session.rollback()
+
+        assert repo.total_dataset_downloads() == 1
+
+
+def test_the_database_rejects_a_duplicate_anonymous_view_record(test_app, clean_database):
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Viewable")
+        repo = DSViewRecordRepository()
+        values = {"user_id": None, "dataset_id": dataset.id, "view_cookie": "cookie-a"}
+        repo.create(view_date=datetime.now(timezone.utc), **values)
+
+        with pytest.raises(IntegrityError):
+            repo.create(view_date=datetime.now(timezone.utc), **values)
+        repo.session.rollback()
+
+        assert repo.total_dataset_views() == 1
+
+
+def test_user_key_is_zero_for_anonymous_records_and_the_user_id_otherwise(test_app, clean_database):
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Downloadable")
+        repo = DSDownloadRecordRepository()
+        anonymous = _download(repo, None, dataset.id, "cookie-a")
+        logged_in = _download(repo, owner.id, dataset.id, "cookie-a")
+
+        repo.session.refresh(anonymous)
+        repo.session.refresh(logged_in)
+        assert anonymous.user_key == 0
+        assert logged_in.user_key == owner.id
+
+
+def test_record_once_counts_each_user_dataset_and_cookie_once(test_app, clean_database):
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Downloadable")
+        repo = DSDownloadRecordRepository()
+
+        assert repo.record_once(None, dataset.id, "cookie-a") is True
+        assert repo.record_once(None, dataset.id, "cookie-a") is False
+        assert repo.record_once(owner.id, dataset.id, "cookie-a") is True
+        assert repo.record_once(owner.id, dataset.id, "cookie-a") is False
+        assert repo.total_dataset_downloads() == 2
+
+
+@pytest.mark.parametrize(
+    "repository_class, cookie_field",
+    [
+        (DSDownloadRecordRepository, "download_cookie"),
+        (DSViewRecordRepository, "view_cookie"),
+    ],
+)
+def test_record_once_survives_a_concurrent_insert_of_the_same_record(
+    test_app, clean_database, monkeypatch, repository_class, cookie_field
+):
+    """Two requests both miss the lookup; the second insert must not fail or count."""
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Raced")
+        repo = repository_class()
+        assert repo.record_once(None, dataset.id, "cookie-a") is True
+
+        real_find = dataset_repositories._find
+        calls = []
+
+        def racing_find(repository, key):
+            # The first lookup misses, as in the request that loses the race.
+            calls.append(key)
+            return None if len(calls) == 1 else real_find(repository, key)
+
+        monkeypatch.setattr(dataset_repositories, "_find", racing_find)
+
+        assert repo.record_once(None, dataset.id, "cookie-a") is False
+        assert len(calls) == 2  # Missed lookup, failed insert, lookup that finds it.
+        assert repo.count() == 1
+        assert repo.model.query.filter_by(**{cookie_field: "cookie-a"}).count() == 1
+
+
+def test_record_once_does_not_hide_other_integrity_errors(test_app, clean_database):
+    with test_app.app_context():
+        repo = DSDownloadRecordRepository()
+
+        # No dataset 999: the foreign key fails, and that is not a duplicate.
+        with pytest.raises(IntegrityError):
+            repo.record_once(None, 999, "cookie-a")
+
+
+def test_global_totals_ignore_records_without_a_dataset(test_app, clean_database):
+    """The home page totals must add up to the per-dataset counts (#67)."""
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        dataset = _make_dataset(owner, title="Counted")
+        downloads, views = DSDownloadRecordRepository(), DSViewRecordRepository()
+        now = datetime.now(timezone.utc)
+        for dataset_id in (dataset.id, None):
+            downloads.create(dataset_id=dataset_id, download_date=now, download_cookie="cookie-a")
+            views.create(dataset_id=dataset_id, view_date=now, view_cookie="cookie-a")
+
+        assert downloads.total_dataset_downloads() == 1
+        assert views.total_dataset_views() == 1

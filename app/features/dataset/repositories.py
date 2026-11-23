@@ -2,9 +2,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from flask_login import current_user
 from splent_framework.repositories.BaseRepository import BaseRepository
 from sqlalchemy import desc
+from sqlalchemy.exc import IntegrityError
 
 from app.features.dataset.models import (
     Author,
@@ -19,6 +19,34 @@ from app.features.dataset.models import (
 logger = logging.getLogger(__name__)
 
 
+def _find(repository: BaseRepository, key: dict):
+    # filter_by(user_id=None) becomes "user_id IS NULL", so anonymous rows match.
+    return repository.model.query.filter_by(**key).first()
+
+
+def _create_once(repository: BaseRepository, key: dict, **values) -> bool:
+    """Insert the record identified by *key* unless it already exists.
+
+    Returns True if this call inserted it. The lookup avoids an exception in
+    the usual case; the unique index settles the race in which two concurrent
+    requests both miss the lookup: the second insert fails and counts as
+    already recorded.
+
+    Call it with no other change pending in the session: recovering from the
+    failed insert rolls the whole session back, which would discard it too.
+    """
+    if _find(repository, key):
+        return False
+    try:
+        repository.create(**key, **values)
+    except IntegrityError:
+        repository.session.rollback()
+        if _find(repository, key) is None:
+            raise  # Not our duplicate: a missing dataset or user, for example.
+        return False
+    return True
+
+
 class AuthorRepository(BaseRepository):
     def __init__(self):
         super().__init__(Author)
@@ -29,10 +57,15 @@ class DSDownloadRecordRepository(BaseRepository):
         super().__init__(DSDownloadRecord)
 
     def total_dataset_downloads(self) -> int:
-        return self.model.query.count()
+        # Same rows as DatasetCounterService: a record without a dataset never counts.
+        return self.model.query.filter(self.model.dataset_id.isnot(None)).count()
 
     def find_by_user_dataset_cookie(self, user_id, dataset_id: int, cookie: str):
         return self.model.query.filter_by(user_id=user_id, dataset_id=dataset_id, download_cookie=cookie).first()
+
+    def record_once(self, user_id: Optional[int], dataset_id: int, cookie: str) -> bool:
+        key = {"user_id": user_id, "dataset_id": dataset_id, "download_cookie": cookie}
+        return _create_once(self, key, download_date=datetime.now(timezone.utc))
 
 
 class DSMetaDataRepository(BaseRepository):
@@ -48,22 +81,12 @@ class DSViewRecordRepository(BaseRepository):
         super().__init__(DSViewRecord)
 
     def total_dataset_views(self) -> int:
-        return self.model.query.count()
+        # Same rows as DatasetCounterService: a record without a dataset never counts.
+        return self.model.query.filter(self.model.dataset_id.isnot(None)).count()
 
-    def the_record_exists(self, dataset: BaseDataset, user_cookie: str):
-        return self.model.query.filter_by(
-            user_id=current_user.id if current_user.is_authenticated else None,
-            dataset_id=dataset.id,
-            view_cookie=user_cookie,
-        ).first()
-
-    def create_new_record(self, dataset: BaseDataset, user_cookie: str) -> DSViewRecord:
-        return self.create(
-            user_id=current_user.id if current_user.is_authenticated else None,
-            dataset_id=dataset.id,
-            view_date=datetime.now(timezone.utc),
-            view_cookie=user_cookie,
-        )
+    def record_once(self, user_id: Optional[int], dataset_id: int, cookie: str) -> bool:
+        key = {"user_id": user_id, "dataset_id": dataset_id, "view_cookie": cookie}
+        return _create_once(self, key, view_date=datetime.now(timezone.utc))
 
 
 class DataSetRepository(BaseRepository):

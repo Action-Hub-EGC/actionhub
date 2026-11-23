@@ -22,6 +22,7 @@ from app.features.dataset.services import (
     DSMetaDataService,
     DSViewRecordService,
 )
+from app.features.metrics.services import DatasetCounterService
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ dataset_service = DataSetService()
 dsmetadata_service = DSMetaDataService()
 doi_mapping_service = DOIMappingService()
 ds_view_record_service = DSViewRecordService()
+dataset_counter_service = DatasetCounterService()
 
 
 @dataset_bp.route("/dataset/upload", methods=["GET"])
@@ -114,7 +116,8 @@ def subdomain_index(doi):
 
     # Save the cookie to the user's browser
     user_cookie = ds_view_record_service.create_cookie(dataset=dataset)
-    resp = make_response(render_template("dataset/view_dataset.html", dataset=dataset))
+    counts = dataset_counter_service.counts(dataset.id)
+    resp = make_response(render_template("dataset/view_dataset.html", dataset=dataset, counts=counts))
     resp.set_cookie("view_cookie", user_cookie, max_age=60 * 60 * 24 * 365 * 2)
 
     return resp
@@ -130,4 +133,5 @@ def get_unsynchronized_dataset(dataset_id):
     if not dataset:
         abort(404)
 
-    return render_template("dataset/view_dataset.html", dataset=dataset)
+    counts = dataset_counter_service.counts(dataset.id)
+    return render_template("dataset/view_dataset.html", dataset=dataset, counts=counts)
