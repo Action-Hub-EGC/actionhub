@@ -115,6 +115,18 @@ def test_doi_landing_page_renders_the_dataset_and_sets_a_view_cookie(test_client
     assert "view_cookie" in response.headers.get("Set-Cookie", "")
 
 
+def test_doi_landing_page_links_to_the_configured_record_service(test_client, monkeypatch):
+    monkeypatch.setenv("ZENODO_RECORD_URL", "http://localhost:8000/api/deposit/depositions")
+    user_id = _signup(test_client)
+    with test_client.application.app_context():
+        _make_dataset(user_id, title="Linked dataset", doi="10.1234/linked")
+
+    body = test_client.get("/doi/10.1234/linked/").get_data(as_text=True)
+
+    assert 'href="http://localhost:8000/api/deposit/depositions/7"' in body
+    assert "zenodo.org/records/7" not in body
+
+
 def test_doi_landing_page_renders_a_dataset_without_tags(test_client):
     user_id = _signup(test_client)
     with test_client.application.app_context():

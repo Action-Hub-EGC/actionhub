@@ -106,8 +106,16 @@ class BaseDataset(db.Model):
         return self.ds_meta_data.publication_type.name.replace("_", " ").title()
 
     def get_zenodo_url(self):
+        """Public record URL of the latest published deposition (#32).
+
+        The base is configured (``ZENODO_RECORD_URL``) or derived from
+        ``ZENODO_API_URL``: fakenodo links point at fakenodo, Zenodo links at
+        Zenodo. A dataset without a DOI or a deposition has no record.
+        """
         if self.ds_meta_data.dataset_doi and self.ds_meta_data.deposition_id:
-            return f"https://zenodo.org/record/{self.ds_meta_data.deposition_id}"
+            from app.features.zenodo.urls import record_url
+
+            return record_url(self.ds_meta_data.deposition_id)
         return None
 
     def get_files_count(self):

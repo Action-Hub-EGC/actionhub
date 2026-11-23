@@ -72,10 +72,11 @@ def test_get_zenodo_url_is_none_without_a_deposition_id():
     assert DataSet.get_zenodo_url(dataset) is None
 
 
-def test_get_zenodo_url_points_at_the_deposition_record():
+def test_get_zenodo_url_points_at_the_configured_deposition_record(monkeypatch):
+    monkeypatch.setenv("ZENODO_RECORD_URL", "https://zenodo.org/records")
     dataset = SimpleNamespace(ds_meta_data=SimpleNamespace(deposition_id=42, dataset_doi="10.1234/dataset1"))
 
-    assert DataSet.get_zenodo_url(dataset) == "https://zenodo.org/record/42"
+    assert DataSet.get_zenodo_url(dataset) == "https://zenodo.org/records/42"
 
 
 def test_files_and_sizes_are_aggregated_across_feature_models():

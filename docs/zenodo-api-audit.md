@@ -24,6 +24,16 @@ En todos los casos, la URL configurada se considera la raíz de la colección `/
 
 Las llamadas envían `access_token` como parámetro de consulta: `{"access_token": ZENODO_ACCESS_TOKEN}`. Las llamadas con JSON usan la cabecera `Content-Type: application/json`.
 
+### Enlaces al registro desde el navegador (#32)
+
+La URL de la API no sirve para el navegador cuando apunta a un contenedor (`http://fakenodo:8000`). `app/features/zenodo/urls.py` construye el enlace público del registro:
+
+1. `ZENODO_RECORD_URL` (configuración o entorno) es la base explícita.
+2. Sin ella, se deriva de `ZENODO_API_URL`: `zenodo.org` y `sandbox.zenodo.org` usan su página `/records`; cualquier otro host se enlaza tal cual, de modo que fakenodo enlaza a fakenodo.
+3. Sin `ZENODO_API_URL`, se aplica la misma URL por defecto que `ZenodoService`.
+
+El enlace final es `{base}/{deposition_id}` y solo se muestra para un dataset publicado con deposition.
+
 ## Tabla de llamadas
 
 | Método | Ruta relativa | Payload o parámetros | Respuesta esperada | Campos usados por ActionHub |

@@ -36,8 +36,10 @@ services:
     build:
       context: ../
       dockerfile: docker/images/Dockerfile.fakenodo
-    expose:
-      - "8000"
+    # Published so the browser can open the "Zenodo record" links, which point
+    # at fakenodo through localhost. The API itself stays on the same service.
+    ports:
+      - "8000:8000"
     volumes:
       - fakenodo_data:/data
     networks:

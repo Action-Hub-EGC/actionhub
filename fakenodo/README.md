@@ -13,9 +13,10 @@ Requisito: el entorno de desarrollo del [README](../README.md#arranque-rápido).
 
    ```dotenv
    ZENODO_API_URL=http://fakenodo:8000/api/deposit/depositions
+   ZENODO_RECORD_URL=http://localhost:8000/api/deposit/depositions
    ```
 
-   Si tu `.env` es anterior, añádele esa línea.
+   Si tu `.env` es anterior, añádele esas dos líneas. `ZENODO_RECORD_URL` es la base que ve el navegador: la primera URL usa el nombre del contenedor y solo resuelve dentro de Compose; la segunda usa el puerto publicado.
 
 2. Arranca el entorno: `docker compose -f docker/docker-compose.dev.yml up -d --build`.
 3. Comprueba que `web` llega a fakenodo. Debe responder `{"status":"ok"}`:
@@ -24,7 +25,7 @@ Requisito: el entorno de desarrollo del [README](../README.md#arranque-rápido).
    docker compose -f docker/docker-compose.dev.yml exec web curl -s http://fakenodo:8000/health
    ```
 
-El puerto 8000 solo está abierto dentro de la red de Compose, no en el host. Por eso la comprobación se hace desde `web`.
+El puerto 8000 se publica en el host para que el enlace «Zenodo record» del dataset funcione en el navegador. La comprobación desde `web` sigue siendo la que confirma la conectividad interna (`http://fakenodo:8000`).
 
 ## Cambiar entre Zenodo y fakenodo
 
