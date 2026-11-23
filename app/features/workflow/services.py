@@ -9,6 +9,7 @@ from splent_framework.services.BaseService import BaseService
 from app.features.dataset.models import Author, DatasetVersion, DSMetaData, PublicationType
 from app.features.dataset.services import calculate_checksum_and_size
 from app.features.hubfile.models import Hubfile
+from app.features.hubfile.services import HubfileService
 from app.features.workflow.lifecycle import transition
 from app.features.workflow.metadata import MetadataError, WorkflowMetadataExtractor
 from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
@@ -125,14 +126,8 @@ class WorkflowDatasetService(BaseService):
             session.add(version)
             session.flush()
 
-            working_dir = os.getenv("WORKING_DIR", "")
-            # #37 will move this to uploads/user_<id>/dataset_<id>/v<major>/.
-            destination = os.path.join(
-                working_dir,
-                "uploads",
-                f"user_{current_user.id}",
-                f"dataset_{dataset.id}",
-            )
+            # #37: files live under their version, never in a shared folder.
+            destination = HubfileService().version_directory(dataset, dataset_version)
             os.makedirs(destination, exist_ok=True)
 
             for name, content in result.files.items():

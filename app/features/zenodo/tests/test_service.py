@@ -200,7 +200,7 @@ def test_upload_file_posts_the_uvl_file_to_the_deposition(test_app, clean_databa
         file_dir.mkdir(parents=True)
         (file_dir / "model.uvl").write_text("features\n    Root\n")
 
-        monkeypatch.setattr("app.features.zenodo.services.uploads_folder_name", lambda: str(tmp_path))
+        monkeypatch.setattr("app.features.hubfile.services.uploads_folder_name", lambda: str(tmp_path))
         service = ZenodoService()
 
         sent = {}
@@ -233,7 +233,7 @@ def test_upload_file_raises_when_zenodo_rejects_the_upload(test_app, clean_datab
         file_dir.mkdir(parents=True)
         (file_dir / "model.uvl").write_text("features\n")
 
-        monkeypatch.setattr("app.features.zenodo.services.uploads_folder_name", lambda: str(tmp_path))
+        monkeypatch.setattr("app.features.hubfile.services.uploads_folder_name", lambda: str(tmp_path))
         service = ZenodoService()
 
         with patch("app.features.zenodo.services.requests") as requests_mock:

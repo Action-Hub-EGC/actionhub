@@ -27,6 +27,7 @@ from app.features.hubfile.repositories import (
     HubfileRepository,
     HubfileViewRecordRepository,
 )
+from app.features.hubfile.services import HubfileService
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +54,12 @@ class DataSetService(BaseService):
         self.dsviewrecord_repostory = DSViewRecordRepository()
         self.hubfileviewrecord_repository = HubfileViewRecordRepository()
 
-    def move_feature_models(self, dataset: UVLDataset):
+    def move_feature_models(self, dataset: UVLDataset, version=None):
         current_user = AuthenticationService().get_authenticated_user()
         source_dir = current_user.temp_folder()
 
-        working_dir = os.getenv("WORKING_DIR", "")
-        dest_dir = os.path.join(working_dir, "uploads", f"user_{current_user.id}", f"dataset_{dataset.id}")
+        version = version or dataset.latest_dataset_version()
+        dest_dir = HubfileService().version_directory(dataset, version)
 
         os.makedirs(dest_dir, exist_ok=True)
 
@@ -265,25 +266,31 @@ class DataSetService(BaseService):
 
         return {"status": "ok", "code": 200, "message": "Everything works!"}
 
-    def build_download_archive(self, dataset: BaseDataset) -> tuple[str, str]:
-        """Zip the dataset's uploaded files and return ``(zip_path, filename)``.
+    def build_download_archive(self, dataset: BaseDataset, version=None) -> tuple[str, str]:
+        """Zip one version of the dataset and return ``(zip_path, filename)``.
 
-        ``zip_path`` lives under a fresh tempdir; the caller is responsible for
-        sending it (usually via ``send_from_directory``) — Linux keeps the
-        inode alive until the response stream drains, so the tempdir can be
-        left to OS cleanup.
+        ``version`` defaults to the latest published one, then to the latest
+        draft, then to the legacy root for datasets created before #37. The
+        archive never mixes versions: when reading the legacy root, ``v*/``
+        subfolders are skipped. ``zip_path`` lives under a fresh tempdir; the
+        caller sends it and the OS cleans it up.
         """
         import tempfile
         from zipfile import ZipFile
 
-        working_dir = os.getenv("WORKING_DIR", "")
-        source_dir = os.path.join(working_dir, "uploads", f"user_{dataset.user_id}", f"dataset_{dataset.id}")
+        hubfiles = HubfileService()
+        version = version or dataset.latest_published_dataset_version() or dataset.latest_dataset_version()
+        source_dir = hubfiles.read_directory(dataset, version)
+        legacy_root = os.path.normpath(source_dir) == os.path.normpath(hubfiles.dataset_directory(dataset))
+
         tmp_dir = tempfile.mkdtemp()
         zip_name = f"dataset_{dataset.id}.zip"
         zip_path = os.path.join(tmp_dir, zip_name)
 
         with ZipFile(zip_path, "w") as zipf:
-            for subdir, _dirs, files in os.walk(source_dir):
+            for subdir, dirs, files in os.walk(source_dir):
+                if legacy_root:
+                    dirs[:] = [name for name in dirs if not (name.startswith("v") and name[1:].isdigit())]
                 for filename in files:
                     full_path = os.path.join(subdir, filename)
                     relative_path = os.path.relpath(full_path, source_dir)

@@ -4,7 +4,7 @@
 - **Fecha:** 20 de noviembre de 2026.
 - **Autor:** José Fernando Gutiérrez (`@Jfgm299`).
 - **Apoyo:** Francisco Casasola (`@Pacocc9`). Pendiente de su revisión.
-- **Estado:** propuesta para revisión.
+- **Estado:** aprobado e implementado en #36 (modelo y migración 006) y #37 (archivos por versión).
 - **Alcance:** documentación. No se modifica código en #35.
 
 ## 1. Propósito
@@ -67,7 +67,7 @@ Hallazgos:
 1. No hay llamada a `actions/newversion`. fakenodo la añadirá en #30; publicar llega en #29.
 2. Si falla entre los pasos 2 y 5, el dataset queda con `deposition_id` pero sin DOI (respuesta `partial`). No hay reintento.
 3. Si el paso 1 lanza una excepción, `upload_dataset` la captura y deja `zenodo_data = {}`. Como no hay `conceptrecid`, se saltan los pasos 2 a 5 y el método devuelve `"ok"`, no `"partial"`: el dataset queda sin `deposition_id` ni DOI y el usuario no recibe ningún aviso (`dataset/services.py:205-229`). #38 debe tratarlo como un fallo reintentable.
-4. `get_zenodo_url` (`dataset/models.py:102`) construye `https://zenodo.org/record/<deposition_id>` a mano; se corrige en #32.
+4. `get_zenodo_url` (`dataset/models.py:102`) construía `https://zenodo.org/record/<deposition_id>` a mano; #32 lo sustituye por `app/features/zenodo/urls.py`, que deriva la base de `ZENODO_RECORD_URL` o de `ZENODO_API_URL`.
 5. fakenodo ya guarda `conceptrecid` (igual al `id` en la primera versión) y una columna `version` (`fakenodo/store.py`).
 
 ### 2.4. `DOIMapping`
@@ -243,7 +243,23 @@ Con `dataset_version.doi` no hace falta escribir cada DOI de versión en `DOIMap
 | #42, #44, #45 | `dataset.dataset_versions`, descarga por versión y concept DOI. |
 | #30 | Forma de la respuesta de `newversion`. |
 
-## 9. Referencias
+## 9. Implementación
+
+- **#36.** `DatasetVersion` vive en `dataset_version`; `DSMetaData` guarda
+  `conceptrecid` y `concept_doi`; `FeatureModel` y `WorkflowVersion` apuntan a
+  su versión. La migración `006` crea la tabla, rellena la versión 1 de cada
+  dataset existente y enlaza su contenido. Los datasets nuevos crean la versión
+  1 al darse de alta, y la publicación guarda en ella la deposition, el DOI y
+  `published_at`.
+- **#37.** `HubfileService` es el único sitio que compone rutas. Los archivos
+  nuevos se guardan en `uploads/user_<id>/dataset_<id>/v<n>/`; la versión 1 sin
+  `v1/` se lee de la carpeta antigua, de modo que la migración no mueve nada.
+  El ZIP de descarga recorre solo la versión elegida y, en la carpeta antigua,
+  ignora las subcarpetas `v*/`.
+- **Pendiente para #38.** El flujo `actions/newversion` y la copia de archivos a
+  `v<n+1>/`; el almacenamiento y el modelo ya lo permiten sin cambios.
+
+## 10. Referencias
 
 - `app/features/dataset/models.py`
 - `app/features/dataset/services.py`

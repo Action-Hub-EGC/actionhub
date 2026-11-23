@@ -4,12 +4,11 @@ import os
 import requests
 from dotenv import load_dotenv
 from flask import Response, jsonify
-from flask_login import current_user
-from splent_framework.configuration.configuration import uploads_folder_name
 from splent_framework.services.BaseService import BaseService
 
 from app.features.dataset.models import DataSet
 from app.features.featuremodel.models import FeatureModel
+from app.features.hubfile.services import HubfileService
 from app.features.zenodo.repositories import ZenodoRepository
 
 logger = logging.getLogger(__name__)
@@ -189,8 +188,12 @@ class ZenodoService(BaseService):
         """
         uvl_filename = feature_model.fm_meta_data.uvl_filename
         data = {"name": uvl_filename}
-        user_id = current_user.id if user is None else user.id
-        file_path = os.path.join(uploads_folder_name(), f"user_{str(user_id)}", f"dataset_{dataset.id}/", uvl_filename)
+        # Same path resolution as downloads: version folder, or the legacy
+        # dataset root for a version 1 without ``v1/`` (#37).
+        file_path = os.path.join(
+            HubfileService().read_directory(dataset, feature_model.dataset_version),
+            uvl_filename,
+        )
 
         publish_url = f"{self.ZENODO_API_URL}/{deposition_id}/files"
         with open(file_path, "rb") as file:

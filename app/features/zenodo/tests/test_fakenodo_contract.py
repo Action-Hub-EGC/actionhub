@@ -98,7 +98,7 @@ def test_zenodo_service_connection_and_probe_against_fakenodo(test_app, fakenodo
 
 def test_zenodo_service_publish_flow_against_fakenodo(test_app, clean_database, fakenodo_url, tmp_path, monkeypatch):
     content = b"features\n    Root\n"
-    monkeypatch.setattr("app.features.zenodo.services.uploads_folder_name", lambda: str(tmp_path))
+    monkeypatch.setattr("app.features.hubfile.services.uploads_folder_name", lambda: str(tmp_path))
 
     with test_app.app_context():
         user, dataset, feature_model = _create_dataset_with_model(
@@ -146,7 +146,7 @@ def test_zenodo_service_publish_flow_against_fakenodo(test_app, clean_database, 
 
 
 def test_zenodo_service_errors_against_fakenodo(test_app, clean_database, fakenodo_url, tmp_path, monkeypatch):
-    monkeypatch.setattr("app.features.zenodo.services.uploads_folder_name", lambda: str(tmp_path))
+    monkeypatch.setattr("app.features.hubfile.services.uploads_folder_name", lambda: str(tmp_path))
 
     with test_app.app_context():
         user, dataset, feature_model = _create_dataset_with_model("contract-errors@example.com", tmp_path)

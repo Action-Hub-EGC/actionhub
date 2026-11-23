@@ -148,7 +148,7 @@ def test_valid_package_is_stored_as_unpublished_draft(test_app, test_client, mon
         assert dataset.ds_meta_data.title == "demo-workflow"
         assert len(dataset.versions) == 1
         assert len(dataset.files()) == 5
-        assert os.path.exists(tmp_path / "uploads" / f"user_{user.id}" / f"dataset_{dataset.id}" / "README.md")
+        assert os.path.exists(tmp_path / "uploads" / f"user_{user.id}" / f"dataset_{dataset.id}" / "v1" / "README.md")
         readme = next(file for file in dataset.files() if file.name == "README.md")
         assert os.path.exists(HubfileService().get_path_by_hubfile(readme))
 

@@ -9,6 +9,7 @@ from app.features.auth.models import User
 from app.features.dataset.models import Author, DataSet, DatasetVersion, DSMetaData, DSMetrics, PublicationType
 from app.features.featuremodel.models import FeatureModel, FMMetaData
 from app.features.hubfile.models import Hubfile
+from app.features.hubfile.services import HubfileService
 
 
 class DataSetSeeder(BaseSeeder):
@@ -126,9 +127,9 @@ class DataSetSeeder(BaseSeeder):
             file_name = f"file{i+1}.uvl"
             feature_model = seeded_feature_models[i]
             dataset = next(ds for ds in seeded_datasets if ds.id == feature_model.data_set_id)
-            user_id = dataset.user_id
+            version = next(version for version in seeded_versions if version.dataset_id == dataset.id)
 
-            dest_folder = os.path.join(working_dir, "uploads", f"user_{user_id}", f"dataset_{dataset.id}")
+            dest_folder = HubfileService().version_directory(dataset, version)
             os.makedirs(dest_folder, exist_ok=True)
             shutil.copy(os.path.join(src_folder, file_name), dest_folder)
 
