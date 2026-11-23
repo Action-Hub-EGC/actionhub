@@ -476,3 +476,143 @@ def test_delete_file_rejects_published_deposition_and_unknown_file(fakenodo_clie
     assert on_published.get_json() == {"message": "Cannot delete files from a published deposition"}
     assert unknown.status_code == 404
     assert unknown.get_json() == {"message": "File not found"}
+
+
+def test_list_depositions_is_empty_initially_and_excludes_deleted_items(fakenodo_client):
+    empty_response = fakenodo_client.get(DEPOSITIONS_URL)
+    assert empty_response.status_code == 200
+    assert empty_response.get_json() == []
+
+    first = fakenodo_client.post(DEPOSITIONS_URL, json={"metadata": {"title": "First"}}).get_json()
+    second = fakenodo_client.post(DEPOSITIONS_URL, json={"metadata": {"title": "Second"}}).get_json()
+    third = fakenodo_client.post(DEPOSITIONS_URL, json={"metadata": {"title": "Third"}}).get_json()
+
+    assert fakenodo_client.delete(f"{DEPOSITIONS_URL}/{second['id']}").status_code == 204
+    assert fakenodo_client.delete(f"{DEPOSITIONS_URL}/{second['id']}").status_code == 404
+
+    remaining = fakenodo_client.get(DEPOSITIONS_URL)
+    assert remaining.status_code == 200
+    assert [item["id"] for item in remaining.get_json()] == [first["id"], third["id"]]
+
+
+def test_delete_published_deposition_removes_it_without_affecting_other_versions(fakenodo_client):
+    v1 = _published(fakenodo_client, content=b"v1")
+    draft = _new_version_draft(fakenodo_client, v1["id"])
+    _upload(fakenodo_client, draft["id"], b"v2", name="v2.uvl")
+    v2 = fakenodo_client.post(f"{DEPOSITIONS_URL}/{draft['id']}/actions/publish").get_json()
+
+    deleted = fakenodo_client.delete(f"{DEPOSITIONS_URL}/{v1['id']}")
+    assert deleted.status_code == 204
+    assert deleted.data == b""
+    assert fakenodo_client.get(f"{DEPOSITIONS_URL}/{v1['id']}").status_code == 404
+
+    v2_after = fakenodo_client.get(f"{DEPOSITIONS_URL}/{v2['id']}").get_json()
+    assert v2_after["doi"] == v2["doi"]
+    assert v2_after["conceptdoi"] == v1["conceptdoi"]
+
+    v3_draft = _new_version_draft(fakenodo_client, v2["id"])
+    assert v3_draft["version"] == 3
+    assert v3_draft["conceptdoi"] == v1["conceptdoi"]
+
+
+def test_unknown_route_and_non_integer_id_return_json_404(fakenodo_client):
+    for path in ("/api/deposit/unknown", f"{DEPOSITIONS_URL}/not-an-id"):
+        response = fakenodo_client.get(path)
+        assert response.status_code == 404
+        assert response.is_json
+        assert response.get_json() == {"message": "Not found"}
+
+
+def test_upload_file_rejects_empty_filename_without_persisting(fakenodo_client):
+    created = fakenodo_client.post(DEPOSITIONS_URL).get_json()
+
+    response = fakenodo_client.post(
+        f"{DEPOSITIONS_URL}/{created['id']}/files",
+        data={"file": (io.BytesIO(b"data"), "")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "file name is required"}
+    assert fakenodo_client.get(f"{DEPOSITIONS_URL}/{created['id']}").get_json()["files"] == []
+
+
+def test_delete_file_of_unknown_deposition_returns_404(fakenodo_client):
+    response = fakenodo_client.delete(f"{DEPOSITIONS_URL}/999/files/1")
+
+    assert response.status_code == 404
+    assert response.get_json() == {"message": "Deposition not found"}
+
+
+def test_update_metadata_rejects_invalid_requests_without_modifying_deposition(fakenodo_client):
+    published = _published(fakenodo_client, title="Original")
+
+    malformed = fakenodo_client.put(
+        f"{DEPOSITIONS_URL}/{published['id']}",
+        data="{bad",
+        content_type="application/json",
+    )
+    wrong_type = fakenodo_client.put(
+        f"{DEPOSITIONS_URL}/{published['id']}",
+        data="metadata",
+        content_type="text/plain",
+    )
+    non_object = fakenodo_client.put(
+        f"{DEPOSITIONS_URL}/{published['id']}",
+        json=["not", "an", "object"],
+    )
+
+    assert malformed.status_code == 400
+    assert malformed.get_json() == {"message": "Malformed JSON"}
+    assert wrong_type.status_code == 415
+    assert wrong_type.get_json() == {"message": "Content-Type must be application/json"}
+    assert non_object.status_code == 400
+    assert non_object.get_json() == {"message": "The request body must be a JSON object"}
+    assert fakenodo_client.get(f"{DEPOSITIONS_URL}/{published['id']}").get_json() == published
+
+
+def test_update_metadata_on_draft_keeps_it_unsubmitted_without_doi(fakenodo_client):
+    created = fakenodo_client.post(DEPOSITIONS_URL, json={"metadata": {"title": "Draft"}}).get_json()
+
+    response = fakenodo_client.put(
+        f"{DEPOSITIONS_URL}/{created['id']}",
+        json={"metadata": {"title": "Updated draft"}},
+    )
+
+    assert response.status_code == 200
+    updated = response.get_json()
+    assert updated["state"] == "unsubmitted"
+    assert updated["doi"] is None
+    assert updated["metadata"] == {"title": "Updated draft"}
+
+
+def test_new_version_matching_an_older_published_version_files_is_rejected(fakenodo_client):
+    v1 = _published(fakenodo_client, content=b"v1")
+    draft_v2 = _new_version_draft(fakenodo_client, v1["id"])
+    _upload(fakenodo_client, draft_v2["id"], b"v2", name="v2.uvl")
+    v2 = fakenodo_client.post(f"{DEPOSITIONS_URL}/{draft_v2['id']}/actions/publish").get_json()
+
+    # Build v3 by removing v2.uvl so its files match v1 again.
+    draft_v3 = _new_version_draft(fakenodo_client, v2["id"])
+    v2_file = next(file for file in draft_v3["files"] if file["filename"] == "v2.uvl")
+    assert fakenodo_client.delete(f"{DEPOSITIONS_URL}/{draft_v3['id']}/files/{v2_file['id']}").status_code == 204
+
+    response = fakenodo_client.post(f"{DEPOSITIONS_URL}/{draft_v3['id']}/actions/publish")
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "New version's files must differ from all previous versions."}
+    assert fakenodo_client.get(f"{DEPOSITIONS_URL}/{draft_v3['id']}").get_json()["doi"] is None
+
+
+def test_new_version_with_all_files_deleted_cannot_be_published(fakenodo_client):
+    v1 = _published(fakenodo_client, content=b"v1")
+    draft = _new_version_draft(fakenodo_client, v1["id"])
+
+    for file in draft["files"]:
+        assert fakenodo_client.delete(f"{DEPOSITIONS_URL}/{draft['id']}/files/{file['id']}").status_code == 204
+
+    response = fakenodo_client.post(f"{DEPOSITIONS_URL}/{draft['id']}/actions/publish")
+
+    assert response.status_code == 400
+    assert response.get_json() == {"message": "Minimum one file must be provided."}
+    assert fakenodo_client.get(f"{DEPOSITIONS_URL}/{draft['id']}").get_json()["doi"] is None

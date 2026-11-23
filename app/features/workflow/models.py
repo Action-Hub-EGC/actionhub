@@ -19,6 +19,7 @@ class ValidationStatus:
     DRAFT = "draft"
     VALIDATED = "validated"
     FAILED = "failed"
+    PUBLISHED = "published"
 
 
 class WorkflowDataset(BaseDataset):
