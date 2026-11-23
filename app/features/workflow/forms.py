@@ -12,3 +12,7 @@ class WorkflowPackageForm(FlaskForm):
         ],
     )
     submit = SubmitField("Validar y guardar borrador")
+
+
+class WorkflowPublishForm(FlaskForm):
+    submit = SubmitField("Publicar con DOI")

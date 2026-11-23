@@ -103,16 +103,14 @@ docker volume rm uvlhub_fakenodo_data
 `docker compose down -v` también lo borra, pero se lleva con él la base de datos de ActionHub (`db_data`).
 
 ## Pruebas y CI
-
-Los tests unitarios están en `app/features/zenodo/tests/` (`test_fakenodo.py` y `test_store.py`) y no necesitan base de datos:
-
+Los tests de `fakenodo` están en `app/features/zenodo/tests/`:
+- `test_fakenodo.py` y `test_store.py`: pruebas unitarias y de API HTTP (no necesitan base de datos).
+- `test_fakenodo_contract.py`: pruebas de contrato que ejecutan `ZenodoService` contra un servidor HTTP real de `fakenodo`.
 ```bash
 docker compose -f docker/docker-compose.dev.yml exec web \
-  pytest app/features/zenodo/tests/test_fakenodo.py app/features/zenodo/tests/test_store.py
+  pytest -v app/features/zenodo/tests/test_fakenodo.py app/features/zenodo/tests/test_store.py app/features/zenodo/tests/test_fakenodo_contract.py
 ```
-
 En `.github/workflows/CI_pipeline.yml`:
-
 - `lint` pasa ruff y black sobre `fakenodo/`.
 - `test` ejecuta sus tests y mide su cobertura (`--cov=fakenodo`).
-- `fakenodo` construye la imagen, la arranca y prueba crear, consultar, listar, subir un archivo, crear y publicar una versión nueva,publicar y borrar una deposition, también después de recrear el contenedor sobre el mismo volumen.
+- `fakenodo` construye la imagen, la arranca y prueba crear, consultar, listar, subir un archivo, publicar, crear y publicar una versión nueva y borrar una deposition, también después de recrear el contenedor sobre el mismo volumen.
