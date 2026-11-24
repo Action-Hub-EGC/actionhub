@@ -16,6 +16,7 @@ class ExploreService(BaseService):
         author="",
         start_date="",
         end_date="",
+        dataset_type="any",
         **kwargs,
     ):
         return self.repository.filter(
@@ -26,5 +27,6 @@ class ExploreService(BaseService):
             author=author,
             start_date=start_date,
             end_date=end_date,
+            dataset_type=dataset_type,
             **kwargs,
         )

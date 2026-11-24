@@ -5,15 +5,18 @@ file endpoints) as well as the ``/api/v1/datasets`` REST resource.
 """
 
 import io
+import json
 from datetime import datetime, timezone
 
 import pytest
 
+from app import db
 from app.features.auth.repositories import UserRepository
-from app.features.dataset.models import PublicationType
+from app.features.dataset.models import DSDownloadRecord, DSViewRecord, PublicationType
 from app.features.dataset.repositories import DataSetRepository, DOIMappingRepository, DSMetaDataRepository
 from app.features.featuremodel.repositories import FeatureModelRepository, FMMetaDataRepository
 from app.features.hubfile.repositories import HubfileRepository
+from app.features.workflow.models import WorkflowDataset, WorkflowVersion
 
 pytestmark = pytest.mark.integration
 
@@ -125,6 +128,69 @@ def test_doi_landing_page_links_to_the_configured_record_service(test_client, mo
 
     assert 'href="http://localhost:8000/api/deposit/depositions/7"' in body
     assert "zenodo.org/records/7" not in body
+
+
+def test_doi_landing_page_renders_the_workflow_block(test_client):
+    user_id = _signup(test_client, email="workflow-page@example.com")
+    with test_client.application.app_context():
+        meta = DSMetaDataRepository().create(
+            title="Workflow dataset",
+            description="A published workflow",
+            publication_type=PublicationType.NONE,
+            dataset_doi="10.1234/workflow-page",
+        )
+        workflow = WorkflowDataset(
+            user_id=user_id,
+            ds_meta_data_id=meta.id,
+            manifest_json="{}",
+            validation_status="published",
+            grade="A",
+        )
+        db.session.add(workflow)
+        db.session.flush()
+        db.session.add(
+            WorkflowVersion(
+                workflow_dataset_id=workflow.id,
+                manifest_json="{}",
+                workflow_yaml="name: demo\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n",
+                metadata_json=json.dumps(
+                    {
+                        "name": "demo",
+                        "triggers": ["push"],
+                        "jobs": [],
+                        "runners": ["ubuntu-latest"],
+                        "actions": ["actions/checkout@v4"],
+                        "reusable_workflows": [],
+                    }
+                ),
+            )
+        )
+        db.session.add(DSViewRecord(dataset_id=workflow.id, view_cookie="workflow-view"))
+        db.session.add(DSDownloadRecord(dataset_id=workflow.id, download_cookie="workflow-download"))
+        db.session.commit()
+
+    body = test_client.get("/doi/10.1234/workflow-page/").get_data(as_text=True)
+
+    assert "Workflow dataset" in body
+    assert "WORKFLOW" in body
+    assert "Disparadores" in body
+    assert "actions/checkout@v4" in body
+    # The page view of this request is the second unique view.
+    assert '<span id="dataset-views">2</span> views' in body
+    assert '<span id="dataset-downloads">1</span> downloads' in body
+
+
+def test_doi_landing_page_renders_the_uvl_block(test_client):
+    user_id = _signup(test_client, email="uvl-page@example.com")
+    with test_client.application.app_context():
+        dataset = _make_dataset(user_id, title="UVL dataset", doi="10.1234/uvl-page")
+        _attach_file(dataset, name="model.uvl")
+
+    body = test_client.get("/doi/10.1234/uvl-page/").get_data(as_text=True)
+
+    assert "UVL dataset" in body
+    assert "UVL models" in body
+    assert "model.uvl" in body
 
 
 def test_doi_landing_page_renders_a_dataset_without_tags(test_client):

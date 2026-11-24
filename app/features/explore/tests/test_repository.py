@@ -114,13 +114,18 @@ def test_blank_query_returns_every_eligible_dataset_newest_first(test_app, clean
     with test_app.app_context():
         _seed_corpus()
         results = ExploreRepository().filter("")
-        assert _titles(results) == ["Home Banking", "Car Configurator", "Smart Home"]
+        assert _titles(results) == ["Modelless Home", "Home Banking", "Car Configurator", "Smart Home"]
 
 
 def test_whitespace_only_query_behaves_like_a_blank_query(test_app, clean_database):
     with test_app.app_context():
         _seed_corpus()
-        assert _titles(ExploreRepository().filter("   ")) == ["Home Banking", "Car Configurator", "Smart Home"]
+        assert _titles(ExploreRepository().filter("   ")) == [
+            "Modelless Home",
+            "Home Banking",
+            "Car Configurator",
+            "Smart Home",
+        ]
 
 
 def test_query_narrows_results_to_matching_datasets(test_app, clean_database):
@@ -128,7 +133,7 @@ def test_query_narrows_results_to_matching_datasets(test_app, clean_database):
         _seed_corpus()
         repository = ExploreRepository()
         assert _titles(repository.filter("banking")) == ["Home Banking"]
-        assert _titles(repository.filter("home")) == ["Home Banking", "Smart Home"]
+        assert _titles(repository.filter("home")) == ["Modelless Home", "Home Banking", "Smart Home"]
         assert _titles(repository.filter("nothingmatchesthis")) == []
 
 
@@ -150,8 +155,8 @@ def test_query_is_normalized_for_accents_and_punctuation(test_app, clean_databas
     with test_app.app_context():
         _seed_corpus()
         repository = ExploreRepository()
-        assert _titles(repository.filter("hóme")) == ["Home Banking", "Smart Home"]
-        assert _titles(repository.filter("¿home?!")) == ["Home Banking", "Smart Home"]
+        assert _titles(repository.filter("hóme")) == ["Modelless Home", "Home Banking", "Smart Home"]
+        assert _titles(repository.filter("¿home?!")) == ["Modelless Home", "Home Banking", "Smart Home"]
 
 
 def test_multiple_words_are_combined_with_or(test_app, clean_database):
@@ -165,16 +170,18 @@ def test_oldest_sorting_reverses_the_result_order(test_app, clean_database):
     with test_app.app_context():
         _seed_corpus()
         repository = ExploreRepository()
-        assert _titles(repository.filter("home", sorting="oldest")) == ["Smart Home", "Home Banking"]
-        assert _titles(repository.filter("home", sorting="newest")) == ["Home Banking", "Smart Home"]
+        assert _titles(repository.filter("home", sorting="oldest")) == ["Smart Home", "Home Banking", "Modelless Home"]
+        assert _titles(repository.filter("home", sorting="newest")) == ["Modelless Home", "Home Banking", "Smart Home"]
 
 
-def test_datasets_without_a_doi_or_a_feature_model_are_never_returned(test_app, clean_database):
+def test_only_published_datasets_are_returned_even_without_feature_models(test_app, clean_database):
     with test_app.app_context():
         _seed_corpus()
         repository = ExploreRepository()
+        # A draft has no DOI and stays out of the catalogue.
         assert _titles(repository.filter("draft")) == []
-        assert _titles(repository.filter("modelless")) == []
+        # A published dataset without a feature model is still discoverable.
+        assert _titles(repository.filter("modelless")) == ["Modelless Home"]
 
 
 def test_publication_type_narrows_the_results(test_app, clean_database):
@@ -182,7 +189,11 @@ def test_publication_type_narrows_the_results(test_app, clean_database):
         _seed_corpus()
         repository = ExploreRepository()
         assert _titles(repository.filter("", publication_type="book")) == ["Car Configurator"]
-        assert _titles(repository.filter("", publication_type="article")) == ["Home Banking", "Smart Home"]
+        assert _titles(repository.filter("", publication_type="article")) == [
+            "Modelless Home",
+            "Home Banking",
+            "Smart Home",
+        ]
 
 
 def test_unknown_publication_type_is_ignored(test_app, clean_database):
@@ -208,7 +219,7 @@ def test_tags_combine_with_the_query(test_app, clean_database):
         _seed_corpus()
         repository = ExploreRepository()
         # "home" alone matches two datasets; the tag narrows them to one.
-        assert _titles(repository.filter("home")) == ["Home Banking", "Smart Home"]
+        assert _titles(repository.filter("home")) == ["Modelless Home", "Home Banking", "Smart Home"]
         assert _titles(repository.filter("home", tags=["iot"])) == ["Smart Home"]
 
 
@@ -257,6 +268,7 @@ def test_date_range_is_inclusive_and_can_be_open(test_app, clean_database):
             "Car Configurator",
         ]
         assert _titles(repository.filter("", start_date="2024-02-01")) == [
+            "Modelless Home",
             "Home Banking",
             "Next Day",
             "Car Configurator",
@@ -273,6 +285,7 @@ def test_invalid_or_inverted_dates_are_handled(test_app, clean_database):
         repository = ExploreRepository()
 
         assert _titles(repository.filter("", start_date="not-a-date")) == [
+            "Modelless Home",
             "Home Banking",
             "Car Configurator",
             "Smart Home",

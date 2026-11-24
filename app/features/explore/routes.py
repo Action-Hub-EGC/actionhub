@@ -19,6 +19,7 @@ def index():
         start_date=request.args.get("start_date", ""),
         end_date=request.args.get("end_date", ""),
         tags=request.args.get("tags", ""),
+        dataset_type=request.args.get("dataset_type", "any"),
     )
 
 

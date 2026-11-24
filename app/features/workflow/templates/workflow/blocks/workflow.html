@@ -1,0 +1,58 @@
+{% set meta = dataset.workflow_metadata() %}
+<div class="list-group">
+
+    <div class="list-group-item">
+        <div class="row">
+            <div class="col-12 d-flex justify-content-between align-items-center">
+                <h4 style="margin-bottom: 0px">Workflow</h4>
+                {% if dataset.grade %}
+                <span class="badge bg-dark fs-6">{{ dataset.grade }}</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="mt-2">
+            <div><span class="text-secondary">Estado:</span> {{ dataset.validation_status }}</div>
+            <div><span class="text-secondary">Versiones:</span> {{ dataset.versions|length }}</div>
+            <div><span class="text-secondary">Archivos:</span> {{ dataset.get_files_count() }}</div>
+        </div>
+    </div>
+
+    {% if meta %}
+    <div class="list-group-item">
+        <div class="mb-1">
+            <span class="text-secondary">Disparadores:</span>
+            {% for trigger in meta.triggers %}<span class="badge bg-primary me-1">{{ trigger }}</span>{% else %}—{% endfor %}
+        </div>
+        <div class="mb-1">
+            <span class="text-secondary">Runners:</span>
+            {% for runner in meta.runners %}<code class="me-2">{{ runner }}</code>{% else %}—{% endfor %}
+        </div>
+        <div>
+            <span class="text-secondary">Acciones usadas:</span>
+            {% for action in meta.actions %}<code class="d-block">{{ action }}</code>{% else %}—{% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="list-group-item">
+        <h5 class="mb-2">Versiones</h5>
+        {% for version in dataset.versions %}
+        <div class="d-flex justify-content-between align-items-start border-bottom py-2">
+            <div>
+                <strong>Versión {{ loop.revindex }}</strong>
+                <br>
+                <small class="text-muted">{{ version.created_at.strftime('%d/%m/%Y %H:%M') }}</small>
+            </div>
+            <span class="badge bg-light text-dark">{{ version.files|length }} archivos</span>
+        </div>
+        {% else %}
+        <p class="text-secondary mb-0">Todavía no hay versiones publicadas.</p>
+        {% endfor %}
+    </div>
+
+    <div class="list-group-item">
+        <a href="{{ url_for('workflow.detail', dataset_id=dataset.id) }}" class="btn btn-outline-primary btn-sm">
+            Ver detalle del workflow
+        </a>
+    </div>
+</div>

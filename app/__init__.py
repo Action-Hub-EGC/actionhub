@@ -95,6 +95,9 @@ def _setup_jinja_globals(app: Flask) -> None:
         },
     )
     app.jinja_env.globals["get_nav_items"] = get_nav_items
+    # Optional features (flamapy is absent in some test environments) can be
+    # hidden instead of making every template fail at url_for().
+    app.jinja_env.globals["endpoint_registered"] = lambda endpoint: endpoint in app.view_functions
 
 
 app = create_app(os.getenv("FLASK_ENV", "development"))

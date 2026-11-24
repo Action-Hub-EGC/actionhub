@@ -43,6 +43,7 @@ function send_query() {
                     .map(tag => tag.trim())
                     .filter(tag => tag !== ''),
                 publication_type: document.querySelector('#publication_type').value,
+                dataset_type: document.querySelector('#dataset_type').value,
                 sorting: document.querySelector('[name="sorting"]:checked').value,
             };
 
@@ -91,6 +92,7 @@ function send_query() {
                                     <div class="d-flex align-items-center justify-content-between">
                                         <h3><a href="${dataset.url}">${dataset.title}</a></h3>
                                         <div>
+                                            <span class="badge bg-info text-dark me-1">${dataset.type.toUpperCase()}</span>
                                             <span class="badge bg-primary" style="cursor: pointer;" onclick="set_publication_type_as_query('${dataset.publication_type}')">${dataset.publication_type}</span>
                                         </div>
                                     </div>
@@ -198,6 +200,9 @@ function sync_url(searchCriteria) {
     if (searchCriteria.publication_type && searchCriteria.publication_type !== 'any') {
         params.set('publication_type', searchCriteria.publication_type);
     }
+    if (searchCriteria.dataset_type && searchCriteria.dataset_type !== 'any') {
+        params.set('dataset_type', searchCriteria.dataset_type);
+    }
     if (searchCriteria.sorting && searchCriteria.sorting !== 'newest') {
         params.set('sorting', searchCriteria.sorting);
     }
@@ -254,6 +259,7 @@ function clearFilters() {
     // Reset the publication type to its default value
     let publicationTypeSelect = document.querySelector('#publication_type');
     publicationTypeSelect.value = "any"; // replace "any" with whatever your default value is
+    document.querySelector('#dataset_type').value = "any";
     // publicationTypeSelect.dispatchEvent(new Event('input', {bubbles: true}));
 
     // Reset the sorting option
@@ -278,6 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const endDateParam = urlParams.get('end_date');
     const tagsParam = urlParams.get('tags');
     const publicationTypeParam = urlParams.get('publication_type');
+    const datasetTypeParam = urlParams.get('dataset_type');
     const sortingParam = urlParams.get('sorting');
 
     if (queryParam && queryParam.trim() !== '') {
@@ -297,6 +304,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (publicationTypeParam) {
         document.getElementById('publication_type').value = publicationTypeParam;
+    }
+    if (datasetTypeParam) {
+        document.getElementById('dataset_type').value = datasetTypeParam;
     }
     if (sortingParam === 'oldest') {
         document.querySelector('[name="sorting"][value="oldest"]').checked = true;

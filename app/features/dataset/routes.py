@@ -14,6 +14,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from app.features.dataset import dataset_bp
+from app.features.dataset.blocks import blocks_for
 from app.features.dataset.forms import DataSetForm
 from app.features.dataset.services import (
     DataSetService,
@@ -117,7 +118,14 @@ def subdomain_index(doi):
     # Save the cookie to the user's browser
     user_cookie = ds_view_record_service.create_cookie(dataset=dataset)
     counts = dataset_counter_service.counts(dataset.id)
-    resp = make_response(render_template("dataset/view_dataset.html", dataset=dataset, counts=counts))
+    resp = make_response(
+        render_template(
+            "dataset/view_dataset.html",
+            dataset=dataset,
+            counts=counts,
+            blocks=blocks_for(dataset.type),
+        )
+    )
     resp.set_cookie("view_cookie", user_cookie, max_age=60 * 60 * 24 * 365 * 2)
 
     return resp
@@ -134,4 +142,9 @@ def get_unsynchronized_dataset(dataset_id):
         abort(404)
 
     counts = dataset_counter_service.counts(dataset.id)
-    return render_template("dataset/view_dataset.html", dataset=dataset, counts=counts)
+    return render_template(
+        "dataset/view_dataset.html",
+        dataset=dataset,
+        counts=counts,
+        blocks=blocks_for(dataset.type),
+    )

@@ -48,7 +48,7 @@
                         <div class="col-12">
                             <div class="mb-3">
                                 <label class="form-label" for="query">
-                                    Search for datasets by title, description, authors, tags, UVL files...
+                                    Search for datasets by title, description, authors, tags or package content...
                                 </label>
                                 <input class="form-control" id="query" name="query" required="" type="text"
                                        value="" autofocus>
@@ -121,6 +121,17 @@
                                 </select>
                             </div>
 
+                        </div>
+
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="dataset_type">Filter by dataset type</label>
+                                <select class="form-control" id="dataset_type" name="dataset_type">
+                                    <option value="any" {% if dataset_type == 'any' %}selected{% endif %}>Any</option>
+                                    <option value="uvl" {% if dataset_type == 'uvl' %}selected{% endif %}>UVL</option>
+                                    <option value="workflow" {% if dataset_type == 'workflow' %}selected{% endif %}>Workflow</option>
+                                </select>
+                            </div>
                         </div>
 
                     </div>

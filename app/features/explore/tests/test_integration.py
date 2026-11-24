@@ -1,5 +1,6 @@
 """HTTP integration tests for explore via the Flask test client."""
 
+import json
 from datetime import datetime
 
 import pytest
@@ -8,6 +9,7 @@ from app import db
 from app.features.auth.models import User
 from app.features.dataset.models import Author, DataSet, DSDownloadRecord, DSMetaData, DSViewRecord, PublicationType
 from app.features.featuremodel.models import FeatureModel, FMMetaData
+from app.features.workflow.models import WorkflowDataset, WorkflowVersion
 
 pytestmark = pytest.mark.integration
 
@@ -44,6 +46,47 @@ def _make_dataset(title, description, author_name, tags, created_at, publication
     db.session.add_all([dataset, fm_meta_data])
     db.session.flush()
     db.session.add(FeatureModel(data_set_id=dataset.id, fm_meta_data_id=fm_meta_data.id))
+    db.session.commit()
+    return dataset
+
+
+def _make_workflow(title, description, author_name, tags, created_at):
+    ds_meta_data = DSMetaData(
+        title=title,
+        description=description,
+        publication_type=PublicationType.NONE,
+        dataset_doi=f"10.1234/{title.lower().replace(' ', '-')}",
+        tags=tags,
+    )
+    db.session.add(ds_meta_data)
+    db.session.flush()
+    db.session.add(Author(name=author_name, affiliation="Some University", ds_meta_data_id=ds_meta_data.id))
+    dataset = WorkflowDataset(
+        user_id=_owner().id,
+        ds_meta_data_id=ds_meta_data.id,
+        created_at=created_at,
+        manifest_json="{}",
+        validation_status="published",
+    )
+    db.session.add(dataset)
+    db.session.flush()
+    db.session.add(
+        WorkflowVersion(
+            workflow_dataset_id=dataset.id,
+            manifest_json="{}",
+            workflow_yaml="name: deploy\non: push\njobs:\n  deploy:\n    steps:\n      - uses: actions/checkout@v4\n",
+            metadata_json=json.dumps(
+                {
+                    "name": "deploy",
+                    "triggers": ["push"],
+                    "jobs": [],
+                    "runners": ["ubuntu-latest"],
+                    "actions": ["actions/checkout@v4"],
+                    "reusable_workflows": [],
+                }
+            ),
+        )
+    )
     db.session.commit()
     return dataset
 
@@ -108,6 +151,47 @@ def test_explore_page_reads_the_tags_from_the_url(test_client):
 
     assert response.status_code == 200
     assert b'value="iot,home"' in response.data
+
+
+def test_explore_page_reads_the_dataset_type_from_the_url(test_client):
+    response = test_client.get("/explore?dataset_type=workflow")
+
+    assert response.status_code == 200
+    assert b'id="dataset_type"' in response.data
+    assert b'value="workflow" selected' in response.data
+
+
+def test_search_includes_workflow_datasets_and_filters_by_type(test_app, test_client):
+    with test_app.app_context():
+        _seed_corpus(test_app)
+        workflow = _make_workflow(
+            "Deploy Pipeline",
+            "deploys the application",
+            "Dana Doe",
+            "ci",
+            datetime(2024, 6, 1),
+        )
+        db.session.add(DSViewRecord(dataset_id=workflow.id, view_cookie="workflow-view"))
+        db.session.add(DSDownloadRecord(dataset_id=workflow.id, download_cookie="workflow-download"))
+        db.session.commit()
+
+    all_results = test_client.post("/explore", json={}).get_json()
+    titles = {dataset["title"] for dataset in all_results}
+    assert "Deploy Pipeline" in titles
+    assert {"Smart Home", "Car Configurator", "Home Banking"}.issubset(titles)
+    workflow_result = next(dataset for dataset in all_results if dataset["title"] == "Deploy Pipeline")
+    assert workflow_result["type"] == "workflow"
+    assert workflow_result["counts"] == {"downloads": 1, "views": 1}
+
+    only_workflows = test_client.post("/explore", json={"dataset_type": "workflow"}).get_json()
+    assert [dataset["title"] for dataset in only_workflows] == ["Deploy Pipeline"]
+
+    only_uvl = test_client.post("/explore", json={"dataset_type": "uvl"}).get_json()
+    assert {dataset["title"] for dataset in only_uvl} == {"Smart Home", "Car Configurator", "Home Banking"}
+
+    # The workflow YAML participates in the free-text search.
+    by_action = test_client.post("/explore", json={"query": "checkout"}).get_json()
+    assert [dataset["title"] for dataset in by_action] == ["Deploy Pipeline"]
 
 
 def test_search_returns_only_the_matching_datasets(test_app, test_client):

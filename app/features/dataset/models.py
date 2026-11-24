@@ -169,6 +169,7 @@ class BaseDataset(db.Model):
         return {
             "title": self.ds_meta_data.title,
             "id": self.id,
+            "type": self.type,
             "created_at": self.created_at,
             "created_at_timestamp": int(self.created_at.timestamp()),
             "description": self.ds_meta_data.description,
