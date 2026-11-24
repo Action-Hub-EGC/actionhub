@@ -235,7 +235,10 @@
         </a>
 
         {% if counts %}
-        <p class="text-secondary mt-2 mb-0" id="dataset-counts" title="Unique per user or anonymous visitor, browser and dataset: repeated clicks are not counted.">
+        <p class="text-secondary mt-2 mb-0" id="dataset-counts"
+           data-dataset-id="{{ dataset.id }}"
+           data-dataset-type="{{ dataset.type }}"
+           title="Unique per user or anonymous visitor, browser and dataset: repeated clicks are not counted.">
             <i data-feather="eye" class="align-middle"></i>
             <span id="dataset-views">{{ counts.views }}</span> views (unique browsers)
             &middot;
