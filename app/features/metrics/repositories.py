@@ -150,6 +150,37 @@ class MetricsRepository:
             "unique_visitors": int(unique_visitors or 0),
         }
 
+    def owner_monthly_activity(self, owner_id: int, since: datetime) -> dict[tuple[int, int], dict[str, int]]:
+        """Dataset views and downloads per ``(year, month)`` since *since*.
+
+        Only records linked to a dataset owned by *owner_id* count. The record's
+        own ``user_id`` is the visitor, not the owner, so the join through
+        ``BaseDataset`` is what attributes the activity. Months without rows
+        are absent here; the service fills them with zero (#63).
+        """
+        totals: dict[tuple[int, int], dict[str, int]] = {}
+        for model, date_column, metric in (
+            (DSDownloadRecord, DSDownloadRecord.download_date, "downloads"),
+            (DSViewRecord, DSViewRecord.view_date, "views"),
+        ):
+            year = func.extract("year", date_column)
+            month = func.extract("month", date_column)
+            rows = (
+                db.session.query(
+                    year.label("year"),
+                    month.label("month"),
+                    func.count(model.id).label("total"),
+                )
+                .join(BaseDataset, model.dataset_id == BaseDataset.id)
+                .filter(BaseDataset.user_id == owner_id, date_column >= since)
+                .group_by(year, month)
+                .all()
+            )
+            for row in rows:
+                key = (int(row.year), int(row.month))
+                totals.setdefault(key, {"downloads": 0, "views": 0})[metric] = int(row.total)
+        return totals
+
     def last_activity(self, owner_id: int) -> Optional[datetime]:
         candidates = [
             db.session.query(func.max(DSViewRecord.view_date))

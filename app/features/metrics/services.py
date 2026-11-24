@@ -1,7 +1,11 @@
+from datetime import datetime, timezone
 from typing import Iterable
 
 from app.features.metrics.repositories import DatasetCounterRepository, MetricsRepository
 from app.features.metrics.utils import as_utc
+
+# Short month names for the dashboard chart, in Spanish.
+MONTH_LABELS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
 
 
 class DatasetCounterService:
@@ -43,20 +47,62 @@ class MetricsService:
     def __init__(self, repository: MetricsRepository | None = None):
         self.repository = repository or MetricsRepository()
 
-    def owner_summary(self, owner_id: int) -> dict:
+    def owner_summary(self, owner_id: int, today: datetime | None = None) -> dict:
         catalog = self.repository.owner_catalog_metrics(owner_id)
         activity = self.repository.owner_activity_metrics(owner_id)
         last_activity_at = as_utc(self.repository.last_activity(owner_id))
+        activity_by_month = self.owner_activity_by_month(owner_id, today=today)
 
         views = activity["workflow_views"]
         downloads = activity["workflow_downloads"]
+        activity_max = max(
+            (max(row["downloads"], row["views"]) for row in activity_by_month),
+            default=0,
+        )
 
         return {
             **catalog,
             **activity,
             "download_rate": (downloads / views) if views else None,
             "last_activity_at": last_activity_at,
+            "activity_by_month": activity_by_month,
+            # A positive height divisor keeps the template free of zero checks.
+            "activity_max": activity_max or 1,
         }
+
+    def owner_activity_by_month(
+        self,
+        owner_id: int,
+        months: int = 6,
+        today: datetime | None = None,
+    ) -> list[dict]:
+        """Monthly dataset views/downloads for the last *months*, zero-filled.
+
+        The series always ends in the current month and starts *months - 1*
+        months earlier, so a quiet month is a row with zeros rather than a
+        missing point (#63).
+        """
+        months = max(1, min(int(months), 24))
+        today = as_utc(today or datetime.now(timezone.utc))
+        first_index = today.year * 12 + (today.month - 1) - (months - 1)
+        first_year, first_month_index = divmod(first_index, 12)
+        since = datetime(first_year, first_month_index + 1, 1)
+
+        totals = self.repository.owner_monthly_activity(owner_id, since)
+        series = []
+        for offset in range(months):
+            year, month_index = divmod(first_index + offset, 12)
+            month = month_index + 1
+            counts = totals.get((year, month), {"downloads": 0, "views": 0})
+            series.append(
+                {
+                    "month": f"{year:04d}-{month:02d}",
+                    "label": f"{MONTH_LABELS[month - 1]} {year}",
+                    "downloads": int(counts.get("downloads", 0)),
+                    "views": int(counts.get("views", 0)),
+                }
+            )
+        return series
 
     def workflows_for_owner(self, owner_id: int) -> list[dict]:
         return [
