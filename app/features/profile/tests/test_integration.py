@@ -1,11 +1,11 @@
 """HTTP integration tests for profile via the Flask test client."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app import db
-from app.features.dataset.models import DataSet, DSMetaData, PublicationType
+from app.features.dataset.models import DataSet, DSDownloadRecord, DSMetaData, DSViewRecord, PublicationType
 from app.features.profile.repositories import UserProfileRepository
 
 pytestmark = pytest.mark.integration
@@ -56,6 +56,38 @@ def test_summary_renders_profile_details(test_app, test_client):
     assert "Ada" in body
     assert "Lovelace" in body
     assert "summary@example.com" in body
+    assert "0 datasets" in body
+
+
+def test_summary_dashboard_shows_totals_and_a_six_month_chart(test_app, test_client):
+    signup(test_client, email="dashboard@example.com")
+    with test_app.app_context():
+        profile = UserProfileRepository().get_by_column("user_id", 1)[0]
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        make_dataset(profile.user_id, "dashboard-dataset", now)
+        dataset = DataSet.query.filter_by(user_id=profile.user_id).one()
+        db.session.add(DSViewRecord(dataset_id=dataset.id, view_cookie="dashboard-view", view_date=now))
+        db.session.add(DSDownloadRecord(dataset_id=dataset.id, download_cookie="dashboard-download", download_date=now))
+        db.session.commit()
+
+    body = test_client.get("/profile/summary").get_data(as_text=True)
+
+    assert 'id="dashboard-totals"' in body
+    assert "Dataset views" in body
+    assert "Dataset downloads" in body
+    assert 'id="activity-chart"' in body
+    assert body.count('class="activity-month') == 6
+    assert 'data-views="1"' in body
+    assert 'data-downloads="1"' in body
+
+
+def test_summary_empty_account_renders_the_dashboard_without_activity(test_client):
+    signup(test_client, email="empty-dashboard@example.com")
+
+    body = test_client.get("/profile/summary").get_data(as_text=True)
+
+    assert 'id="dashboard-totals"' in body
+    assert "No activity yet" in body
     assert "0 datasets" in body
 
 
