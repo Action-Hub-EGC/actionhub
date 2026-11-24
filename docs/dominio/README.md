@@ -3,6 +3,7 @@
 Documentación del dominio de ActionHub. Actualizada al cierre de **M2 · Producto** (23 de noviembre de 2026).
 
 - Modelo común `BaseDataset` y tipos `UVLDataset` y `WorkflowDataset`.
+- [Tipos de dataset, bloques de la página común y cómo añadir un tipo](dataset-types.md).
 - Versionado mayor: `DatasetVersion`, concept DOI y migración `006`.
 - Validación: L1 sintáctica, L2 de esquema, L3 estática y L4 de seguridad.
 - Manifiesto `actionhub.yaml` y formato de paquete de workflow.
