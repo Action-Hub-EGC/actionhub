@@ -132,6 +132,33 @@ class BaseDataset(db.Model):
     def get_cleaned_publication_type(self):
         return self.ds_meta_data.publication_type.name.replace("_", " ").title()
 
+    def get_badge_url(self):
+        """SVG badge URL of a published dataset (#55/#57)."""
+        if not self.ds_meta_data.dataset_doi:
+            return None
+        return f"{self.get_public_doi()}/badge.svg"
+
+    def get_badge_embed(self):
+        """Markdown and HTML snippets that embed the badge and link to the page.
+
+        ``None`` for an unpublished dataset: there is no stable page or badge
+        until it has a DOI.
+        """
+        badge_url = self.get_badge_url()
+        if not badge_url:
+            return None
+
+        from app.features.dataset.badge import html_badge_snippet, markdown_badge_snippet
+
+        page_url = self.get_public_doi()
+        title = self.ds_meta_data.title
+        return {
+            "page_url": page_url,
+            "badge_url": badge_url,
+            "markdown": markdown_badge_snippet(title, page_url, badge_url),
+            "html": html_badge_snippet(title, page_url, badge_url),
+        }
+
     def get_zenodo_url(self):
         """Public record URL of the latest published deposition (#32).
 

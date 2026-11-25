@@ -29,6 +29,21 @@ def _downloads_label(downloads: int) -> str:
     return f"{downloads} download" if downloads == 1 else f"{downloads} downloads"
 
 
+def _markdown_text(value: str) -> str:
+    """Escape the characters that would break a Markdown link label."""
+    return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def markdown_badge_snippet(title: str, page_url: str, badge_url: str) -> str:
+    """Ready-to-paste Markdown image link for a README (#57)."""
+    return f"[![{_markdown_text(title)}]({badge_url})]({page_url})"
+
+
+def html_badge_snippet(title: str, page_url: str, badge_url: str) -> str:
+    """Ready-to-paste HTML image link for a website (#57)."""
+    return f'<a href="{escape(page_url)}">' f'<img src="{escape(badge_url)}" alt="{escape(title)}">' "</a>"
+
+
 def build_badge_svg(title: str, doi: str, downloads: int) -> str:
     """SVG badge with the short title, the DOI and the number of downloads."""
     segments = [

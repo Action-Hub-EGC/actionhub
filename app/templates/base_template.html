@@ -293,6 +293,10 @@ Romero-Organvidez, D., Galindo, J. A., Sundermann, C., Horcas, J.-M., & Benavide
         navigator.clipboard.writeText(textToCopy);
     }
 
+    function copyValue(input_identifier) {
+        navigator.clipboard.writeText(document.getElementById(input_identifier).value);
+    }
+
 </script>
 
 {# Feature scripts come from splent_framework's asset registry: each feature

@@ -174,6 +174,39 @@
 
         </div>
 
+        {% set embed = dataset.get_badge_embed() %}
+        {% if embed %}
+        <div class="card" id="embed-badge">
+            <div class="card-body">
+                <h5 class="card-title">Embed badge</h5>
+                <p class="text-secondary small">
+                    Paste the badge in a README or website. It links to
+                    <a href="{{ embed.page_url }}">{{ embed.page_url }}</a>.
+                </p>
+
+                <label class="form-label small" for="embed-markdown">Markdown</label>
+                <div class="input-group mb-3">
+                    <input id="embed-markdown" class="form-control form-control-sm" type="text"
+                           value="{{ embed.markdown }}" readonly>
+                    <button class="btn btn-outline-secondary btn-sm" type="button"
+                            onclick="copyValue('embed-markdown')">
+                        <i data-feather="clipboard" class="center-button-icon"></i> Copy
+                    </button>
+                </div>
+
+                <label class="form-label small" for="embed-html">HTML</label>
+                <div class="input-group">
+                    <input id="embed-html" class="form-control form-control-sm" type="text"
+                           value="{{ embed.html }}" readonly>
+                    <button class="btn btn-outline-secondary btn-sm" type="button"
+                            onclick="copyValue('embed-html')">
+                        <i data-feather="clipboard" class="center-button-icon"></i> Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="card">
 
             <div class="card-body">
