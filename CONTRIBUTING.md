@@ -129,6 +129,8 @@ docker compose -f docker/docker-compose.dev.yml exec web ruff check app rosemary
 docker compose -f docker/docker-compose.dev.yml exec web black --check app rosemary fakenodo
 ```
 
+El workflow `Security` (bandit, pip-audit, Trivy y CodeQL) también se ejecuta en cada push y falla si aparece una vulnerabilidad alta o crítica sin justificar. Si cambias `requirements.txt`, ejecuta pip-audit antes de subir la rama. Los comandos y las excepciones están en [docs/seguridad.md](docs/seguridad.md).
+
 ## Comunicación
 
 - Issues: canal oficial y vinculante.
