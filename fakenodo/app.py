@@ -101,7 +101,8 @@ def create_app(store: DepositionStore | None = None) -> Flask:
         if not filename:
             return jsonify({"message": "file name is required"}), 400
 
-        digest = hashlib.md5()
+        # Checksum reported to clients, as Zenodo does; not a security control.
+        digest = hashlib.md5(usedforsecurity=False)
         size = 0
         while chunk := uploaded_file.stream.read(1024 * 1024):
             digest.update(chunk)

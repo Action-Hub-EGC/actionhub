@@ -51,6 +51,11 @@ target-version = "py313"
 # pycodestyle + pyflakes + isort: what flake8 + isort covered
 select = ["E", "F", "W", "I"]
 
+[tool.bandit]
+# Tests use assert, fixed passwords and fake data by design. The CI fails on
+# HIGH severity findings; docs/seguridad.md lists the reviewed exceptions.
+exclude_dirs = ["*/tests/*", "*/test_*.py"]
+
 [tool.flake8]
 max-line-length = 120
 extend-ignore = ["E203", "W503"]

@@ -198,7 +198,8 @@ class DepositionStore:
         values.append(deposition_id)
         with self._lock, self._connection() as connection:
             cursor = connection.execute(
-                f"UPDATE depositions SET {', '.join(assignments)} WHERE id = ?",
+                # Column names come from the ``allowed`` whitelist; values are bound.
+                f"UPDATE depositions SET {', '.join(assignments)} WHERE id = ?",  # nosec B608
                 values,
             )
             if cursor.rowcount == 0:

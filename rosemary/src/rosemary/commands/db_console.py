@@ -15,13 +15,18 @@ def db_console():
     mariadb_database = os.getenv("MARIADB_DATABASE")
     mariadb_port = os.getenv("MARIADB_PORT", "3306")
 
-    # Build the command to connect to MariaDB
-    mariadb_connect_cmd = (
-        f"mysql -h{mariadb_hostname} -P{mariadb_port} -u{mariadb_user} -p{mariadb_password} {mariadb_database}"
-    )
+    # Pass the arguments as a list, without a shell: a value from .env with
+    # spaces or shell metacharacters must not turn into extra commands.
+    mariadb_connect_cmd = [
+        "mysql",
+        f"-h{mariadb_hostname}",
+        f"-P{mariadb_port}",
+        f"-u{mariadb_user}",
+        f"-p{mariadb_password}",
+        f"{mariadb_database}",
+    ]
 
-    # Execute the command
     try:
-        subprocess.run(mariadb_connect_cmd, shell=True, check=True)
+        subprocess.run(mariadb_connect_cmd, check=True)  # nosec B603
     except subprocess.CalledProcessError as e:
         click.echo(click.style(f"Error opening MariaDB console: {e}", fg="red"))
