@@ -29,6 +29,9 @@ from app.features.metrics.services import DatasetCounterService
 
 logger = logging.getLogger(__name__)
 
+# Seconds a badge may be reused before revalidating (#58).
+BADGE_MAX_AGE = 300
+
 
 dataset_service = DataSetService()
 dsmetadata_service = DSMetaDataService()
@@ -146,7 +149,14 @@ def doi_badge(doi):
 
     downloads = dataset_counter_service.counts(ds_meta_data.data_set.id)["downloads"]
     svg = build_badge_svg(title=ds_meta_data.title, doi=doi, downloads=downloads)
-    return Response(svg, mimetype="image/svg+xml")
+    resp = Response(svg, mimetype="image/svg+xml")
+    # Short-lived caching (#58): embeds and image proxies reuse the badge for a
+    # few minutes, and the ETag lets them revalidate with a 304 afterwards. The
+    # tag is a hash of the SVG, so a new download changes it.
+    resp.cache_control.public = True
+    resp.cache_control.max_age = BADGE_MAX_AGE
+    resp.add_etag()
+    return resp.make_conditional(request)
 
 
 @dataset_bp.route("/dataset/unsynchronized/<int:dataset_id>/", methods=["GET"])

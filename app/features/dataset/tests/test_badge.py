@@ -121,3 +121,45 @@ def test_badge_route_redirects_a_superseded_doi(test_client):
 @pytest.mark.integration
 def test_badge_route_404s_for_an_unknown_doi(test_client):
     assert test_client.get("/doi/10.1234/no-such-dataset/badge.svg").status_code == 404
+
+
+@pytest.mark.integration
+def test_badge_is_publicly_cacheable_for_a_short_time(test_client):
+    user_id = _signup(test_client, email="badge-cache@example.com")
+    with test_client.application.app_context():
+        _make_dataset(user_id, title="Cached dataset", doi="10.1234/cached")
+
+    cache_control = test_client.get("/doi/10.1234/cached/badge.svg").cache_control
+
+    assert cache_control.public
+    # Short-lived (#58): long enough to absorb embed traffic, short enough
+    # that a new download shows up within minutes.
+    assert 0 < cache_control.max_age <= 600
+
+
+@pytest.mark.integration
+def test_badge_answers_304_when_the_client_already_has_it(test_client):
+    user_id = _signup(test_client, email="badge-etag@example.com")
+    with test_client.application.app_context():
+        _make_dataset(user_id, title="Tagged dataset", doi="10.1234/tagged")
+
+    etag = test_client.get("/doi/10.1234/tagged/badge.svg").headers["ETag"]
+    revalidated = test_client.get("/doi/10.1234/tagged/badge.svg", headers={"If-None-Match": etag})
+
+    assert revalidated.status_code == 304
+    assert revalidated.get_data() == b""
+
+
+@pytest.mark.integration
+def test_badge_etag_changes_when_the_downloads_change(test_client):
+    user_id = _signup(test_client, email="badge-etag-change@example.com")
+    with test_client.application.app_context():
+        dataset_id = _make_dataset(user_id, title="Growing dataset", doi="10.1234/growing").id
+
+    etag = test_client.get("/doi/10.1234/growing/badge.svg").headers["ETag"]
+    with test_client.application.app_context():
+        _add_downloads(dataset_id, 1)
+    revalidated = test_client.get("/doi/10.1234/growing/badge.svg", headers={"If-None-Match": etag})
+
+    assert revalidated.status_code == 200
+    assert _texts(revalidated.get_data(as_text=True))[-1] == "1 download"
