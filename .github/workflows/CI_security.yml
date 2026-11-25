@@ -1,0 +1,165 @@
+# ----------------------------------------------------------------------------
+# Security analysis (E-03, #75)
+# bandit (código Python), pip-audit (dependencias), Trivy (dependencias,
+# secretos, Dockerfiles e imagen de producción) y CodeQL (Python y workflows).
+#
+# Bloquea: hallazgos HIGH o CRITICAL que no estén justificados en
+# docs/seguridad.md. CodeQL publica sus alertas en la pestaña Security.
+# Se ejecuta en push a todas las ramas (EGCFlow 0 PR, ACTA-2026-09) y cada
+# lunes para detectar CVE nuevas sin necesidad de commits.
+#
+# Este workflow cumple las reglas que ActionHub exige a los demás: acciones
+# fijadas por SHA (SEC-01), permisos explícitos y mínimos (SEC-02/03),
+# timeout-minutes y concurrency.
+# ----------------------------------------------------------------------------
+name: Security
+
+on:
+  push:
+    branches:
+      - '**'
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+
+jobs:
+  bandit:
+    name: bandit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Install bandit
+        run: pip install bandit==1.9.4
+
+      # Informe completo (todas las severidades) como evidencia.
+      - name: Full report
+        run: bandit -c pyproject.toml -r app rosemary fakenodo -f json -o bandit-report.json --exit-zero
+
+      - name: Fail on HIGH severity
+        run: bandit -c pyproject.toml -r app rosemary fakenodo --severity-level high
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bandit-report
+          path: bandit-report.json
+
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.13'
+
+      - name: Install pip-audit
+        run: pip install pip-audit==2.10.1
+
+      # requirements.txt fija todas las versiones (incluidas las transitivas),
+      # así que se audita tal cual, sin instalar nada (--no-deps --disable-pip).
+      # Excepciones justificadas en docs/seguridad.md: Flask y python-dotenv
+      # están fijados por splent_framework y no se pueden subir.
+      - name: Audit requirements.txt
+        run: >-
+          pip-audit -r requirements.txt --no-deps --disable-pip
+          --progress-spinner off --desc on
+          --ignore-vuln PYSEC-2026-1377
+          --ignore-vuln PYSEC-2026-2151
+          --ignore-vuln PYSEC-2026-2270
+
+  trivy-fs:
+    name: Trivy (repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      # Dependencias, secretos y configuración (Dockerfiles). Las excepciones
+      # viven en .trivyignore, cada una con su justificación.
+      - name: Scan repository
+        run: >-
+          docker run --rm -v "$PWD:/src" -w /src "$TRIVY_IMAGE"
+          fs --scanners vuln,secret,misconfig
+          --severity HIGH,CRITICAL --ignore-unfixed
+          --ignorefile .trivyignore --exit-code 1 --no-progress .
+
+  trivy-image:
+    name: Trivy (production image)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Build production image
+        run: docker build -t actionhub:scan -f docker/images/Dockerfile.prod .
+
+      # Paquetes del sistema y de Python dentro de la imagen que se despliega.
+      # --ignore-unfixed: una CVE sin parche en Debian no se puede corregir
+      # desde aquí; se revisa en la ejecución semanal.
+      - name: Scan image
+        run: >-
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
+          -v "$PWD/.trivyignore:/.trivyignore:ro" "$TRIVY_IMAGE"
+          image --scanners vuln,secret
+          --severity HIGH,CRITICAL --ignore-unfixed
+          --ignorefile /.trivyignore --exit-code 1 --no-progress actionhub:scan
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # actions: analiza nuestros propios workflows de GitHub Actions.
+        language: [python, actions]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@915412ff23e8b7659517e607487dbeae018f2934 # v4.39.5
+        with:
+          category: /language:${{ matrix.language }}
