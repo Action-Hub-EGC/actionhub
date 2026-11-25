@@ -1,14 +1,3 @@
 # Excepciones de Trivy revisadas por el equipo (#75).
-# Cada entrada necesita una justificación aquí y en docs/seguridad.md.
-# Se incluyen los dos formatos de ID (anterior y actual) de cada regla.
-
-# Dockerfile sin USER: las imágenes se ejecutan como root.
-# - Dockerfile.dev monta el socket de Docker para webhook y Rosemary: un
-#   usuario sin privilegios no aportaría aislamiento real.
-# - Dockerfile.prod y Dockerfile.render ejecutan migraciones y escriben en
-#   volúmenes (uploads) cuyo propietario es root en los entornos actuales.
-# - Dockerfile.fakenodo es un doble de pruebas que no se despliega.
-# Pendiente: usuario sin privilegios en producción (issue de seguimiento).
-DS002
-AVD-DS-0002
-DS-0002
+# Cada ID que se añada aquí necesita su justificación en docs/seguridad.md.
+# Ahora mismo no hay ninguna.

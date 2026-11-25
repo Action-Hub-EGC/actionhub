@@ -67,6 +67,7 @@ La versión de black del job de lint en `CI_pipeline.yml` se actualiza también.
 | --- | --- | --- |
 | B324 (HIGH): MD5 débil | `app/features/dataset/services.py`, `fakenodo/app.py` | Es un checksum de integridad compatible con Zenodo, no un control de seguridad. Se declara `usedforsecurity=False`. |
 | B602 (HIGH): `subprocess` con `shell=True` | `rosemary/src/rosemary/commands/db_console.py` | Los argumentos se pasan como lista y sin shell. |
+| Trivy DS-0029 (HIGH): `apt-get install` sin `--no-install-recommends` | `docker/images/Dockerfile.mariadb` | Se añade el flag. |
 
 ## Excepciones justificadas
 
@@ -78,7 +79,8 @@ No queda ninguna vulnerabilidad crítica o alta. Las excepciones siguientes se r
 | PYSEC-2026-2151 (CVE-2026-27205) | Flask 3.1.0 | Baja | Falta de `Vary: Cookie` en algunos accesos a `session`. Requiere un proxy de caché que no ignore las cookies; no hay ninguno en el despliegue. Mismo bloqueo de versión. |
 | PYSEC-2026-2270 (CVE-2026-28684) | python-dotenv 1.0.1 | Media (6.6) | Solo afecta a `set_key()` y `unset_key()`; el código solo usa `load_dotenv()` y `dotenv_values()`. Versión fijada por `splent_framework`. |
 | B608 (MEDIUM) | `fakenodo/store.py` | Media | Falso positivo: los nombres de columna salen de una lista blanca y los valores van parametrizados. Se marca con `# nosec B608`. |
-| DS-0002 | Dockerfiles sin `USER` | Alta | La imagen de desarrollo monta el socket de Docker (un usuario sin privilegios no aísla nada). Producción ejecuta migraciones y escribe en volúmenes con propietario root. fakenodo no se despliega. Queda pendiente un usuario sin privilegios para producción. |
+
+[`.trivyignore`](../.trivyignore) está vacío: Trivy no tiene ninguna excepción.
 
 Los hallazgos de severidad media y baja de bandit que no bloquean se revisan en el informe: llamadas a `requests` sin `timeout` en `zenodo/services.py`, `0.0.0.0` en fakenodo dentro del contenedor y `subprocess` en los comandos de Rosemary.
 
