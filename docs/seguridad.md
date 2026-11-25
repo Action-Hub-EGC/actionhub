@@ -68,6 +68,10 @@ La versión de black del job de lint en `CI_pipeline.yml` se actualiza también.
 | B324 (HIGH): MD5 débil | `app/features/dataset/services.py`, `fakenodo/app.py` | Es un checksum de integridad compatible con Zenodo, no un control de seguridad. Se declara `usedforsecurity=False`. |
 | B602 (HIGH): `subprocess` con `shell=True` | `rosemary/src/rosemary/commands/db_console.py` | Los argumentos se pasan como lista y sin shell. |
 | Trivy DS-0029 (HIGH): `apt-get install` sin `--no-install-recommends` | `docker/images/Dockerfile.mariadb` | Se añade el flag. |
+| Trivy (HIGH): libzstd1 de Debian sin el parche `deb13u1` | `docker/images/Dockerfile.prod` | La etapa final ejecuta `apt-get upgrade` para incluir los parches de seguridad que la imagen base aún no trae. |
+| Trivy (HIGH): urllib3 2.7.0 y msgpack 1.1.2 incluidos en el pip de la imagen base | `docker/images/Dockerfile.prod` | Se actualiza el pip de `/usr/local`. La aplicación usa el del venv, pero el otro también estaba en la imagen. |
+
+Pendiente: `Dockerfile.render` y `Dockerfile.webhook` usan la misma base y necesitan los mismos dos cambios. El CI solo escanea la imagen de `Dockerfile.prod`, que es la que se publica en Docker Hub.
 
 ## Excepciones justificadas
 
@@ -80,7 +84,10 @@ No queda ninguna vulnerabilidad crítica o alta. Las excepciones siguientes se r
 | PYSEC-2026-2270 (CVE-2026-28684) | python-dotenv 1.0.1 | Media (6.6) | Solo afecta a `set_key()` y `unset_key()`; el código solo usa `load_dotenv()` y `dotenv_values()`. Versión fijada por `splent_framework`. |
 | B608 (MEDIUM) | `fakenodo/store.py` | Media | Falso positivo: los nombres de columna salen de una lista blanca y los valores van parametrizados. Se marca con `# nosec B608`. |
 
-[`.trivyignore`](../.trivyignore) está vacío: Trivy no tiene ninguna excepción.
+| Secreto `private-key` | `seleniumwire/ca.key` en la imagen de producción | Alta | No es un secreto del proyecto: es la CA de pruebas pública que selenium-wire incluye en su paquete de PyPI para interceptar HTTPS en los tests de Selenium. Ningún componente la marca como confiable. Llega a la imagen porque `requirements.txt` mezcla dependencias de ejecución y de test. Se excluye solo ese fichero (`--skip-files`). Pendiente: separar las dependencias de desarrollo para que selenium-wire no entre en producción. |
+
+| CVE-2025-47273 | setuptools 70.3.0 en la imagen | Alta | Falso positivo: Trivy lo lee de `pip/_vendor/vendor.txt`, pero pip solo incluye `pkg_resources` de setuptools. La CVE está en `PackageIndex`, que no viene incluido. Está en [`.trivyignore`](../.trivyignore). |
+| DS-0002 | Dockerfiles sin `USER` (los 7) | Alta | Las imágenes de desarrollo y de webhook montan el socket de Docker, así que un usuario sin privilegios no aislaría nada. Producción y Render ejecutan migraciones y escriben en volúmenes cuyo propietario es root. fakenodo, locust y mariadb son de desarrollo y pruebas. Está en [`.trivyignore`](../.trivyignore). Pendiente: usuario sin privilegios en producción. |
 
 Los hallazgos de severidad media y baja de bandit que no bloquean se revisan en el informe: llamadas a `requests` sin `timeout` en `zenodo/services.py`, `0.0.0.0` en fakenodo dentro del contenedor y `subprocess` en los comandos de Rosemary.
 

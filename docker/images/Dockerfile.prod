@@ -32,9 +32,16 @@ ENV PIP_ROOT_USER_ACTION=ignore
 # mariadb-client is what scripts/wait-for-db.sh and the entrypoint call. bash
 # and libstdc++, which python-sat's extension links against, already ship in
 # the base image.
+# upgrade: pick up Debian security fixes the base image has not been rebuilt
+# with yet (Trivy, #75).
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends mariadb-client \
     && rm -rf /var/lib/apt/lists/*
+
+# The base image's own pip (/usr/local) is not used at runtime, but it ships
+# vendored copies of urllib3 and msgpack with known CVEs (Trivy, #75).
+RUN python -m pip install --no-cache-dir --upgrade pip
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"

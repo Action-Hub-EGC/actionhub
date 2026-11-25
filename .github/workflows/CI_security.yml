@@ -126,12 +126,15 @@ jobs:
       # Paquetes del sistema y de Python dentro de la imagen que se despliega.
       # --ignore-unfixed: una CVE sin parche en Debian no se puede corregir
       # desde aquí; se revisa en la ejecución semanal.
+      # --skip-files: CA de pruebas pública que selenium-wire incluye en su
+      # paquete (justificado en docs/seguridad.md).
       - name: Scan image
         run: >-
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock
           -v "$PWD/.trivyignore:/.trivyignore:ro" "$TRIVY_IMAGE"
           image --scanners vuln,secret
           --severity HIGH,CRITICAL --ignore-unfixed
+          --skip-files /opt/venv/lib/python3.13/site-packages/seleniumwire/ca.key
           --ignorefile /.trivyignore --exit-code 1 --no-progress actionhub:scan
 
   codeql:

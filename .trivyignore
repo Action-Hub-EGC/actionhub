@@ -1,3 +1,15 @@
 # Excepciones de Trivy revisadas por el equipo (#75).
 # Cada ID que se añada aquí necesita su justificación en docs/seguridad.md.
-# Ahora mismo no hay ninguna.
+
+# setuptools 70.3.0 aparece en pip/_vendor/vendor.txt, pero pip solo incluye
+# pkg_resources de setuptools; la CVE está en PackageIndex, que no se incluye.
+CVE-2025-47273
+
+# Dockerfile sin USER: las imágenes se ejecutan como root.
+# - Dockerfile.dev y Dockerfile.webhook montan el socket de Docker: un usuario
+#   sin privilegios no aportaría aislamiento real.
+# - Dockerfile.prod y Dockerfile.render ejecutan migraciones y escriben en
+#   volúmenes (uploads) cuyo propietario es root en los entornos actuales.
+# - fakenodo, locust y mariadb son servicios de desarrollo y pruebas.
+# Pendiente: usuario sin privilegios en producción.
+DS-0002
