@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from flask import (
+    Response,
     abort,
     jsonify,
     make_response,
@@ -14,6 +15,7 @@ from flask import (
 from flask_login import current_user, login_required
 
 from app.features.dataset import dataset_bp
+from app.features.dataset.badge import build_badge_svg
 from app.features.dataset.blocks import blocks_for
 from app.features.dataset.forms import DataSetForm
 from app.features.dataset.services import (
@@ -129,6 +131,22 @@ def subdomain_index(doi):
     resp.set_cookie("view_cookie", user_cookie, max_age=60 * 60 * 24 * 365 * 2)
 
     return resp
+
+
+@dataset_bp.route("/doi/<path:doi>/badge.svg", methods=["GET"])
+def doi_badge(doi):
+    """Embeddable SVG badge (#55). It does not record a view: embeds are not visits."""
+    new_doi = doi_mapping_service.get_new_doi(doi)
+    if new_doi:
+        return redirect(url_for("dataset.doi_badge", doi=new_doi), code=302)
+
+    ds_meta_data = dsmetadata_service.filter_by_doi(doi)
+    if not ds_meta_data:
+        abort(404)
+
+    downloads = dataset_counter_service.counts(ds_meta_data.data_set.id)["downloads"]
+    svg = build_badge_svg(title=ds_meta_data.title, doi=doi, downloads=downloads)
+    return Response(svg, mimetype="image/svg+xml")
 
 
 @dataset_bp.route("/dataset/unsynchronized/<int:dataset_id>/", methods=["GET"])
