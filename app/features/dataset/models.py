@@ -116,6 +116,14 @@ class BaseDataset(db.Model):
         published = [version for version in self.dataset_versions if version.doi]
         return published[-1] if published else None
 
+    def current_dataset_version(self):
+        """Version shown to visitors: the latest published one, else the latest draft (#38).
+
+        A draft of the next version must not leak into the public page, the
+        file count or the API while the owner is still editing it.
+        """
+        return self.latest_published_dataset_version() or self.latest_dataset_version()
+
     def files_for_version(self, version=None):
         """Files of ``version``, or of the latest published version by default."""
         version = version or self.latest_published_dataset_version()
@@ -240,8 +248,16 @@ class UVLDataset(BaseDataset):
 
     feature_models = db.relationship("FeatureModel", backref="data_set", lazy=True, cascade="all, delete")
 
+    def current_feature_models(self):
+        """Feature models of the current version; all of them on rows without versions."""
+        current = self.current_dataset_version()
+        if current is None:
+            return list(self.feature_models)
+        return [fm for fm in self.feature_models if fm.dataset_version_id in (None, current.id)]
+
     def files(self):
-        return [file for fm in self.feature_models for file in fm.files]
+        """Files of the current version, so a new version never doubles the count (#38)."""
+        return [file for fm in self.current_feature_models() for file in fm.files]
 
 
 # Backward-compatible name: existing imports, seeders and tests keep working

@@ -13,7 +13,7 @@
     </div>
 
 
-    {% for feature_model in dataset.feature_models %}
+    {% for feature_model in dataset.current_feature_models() %}
         {% for file in feature_model.files %}
             <div class="list-group-item">
 

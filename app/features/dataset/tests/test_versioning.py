@@ -126,7 +126,8 @@ def test_versions_are_ordered_and_files_are_scoped_to_their_version(test_app, cl
         assert loaded.latest_published_dataset_version().number == 2
         assert [file.name for file in loaded.files_for_version(first)] == ["first.uvl"]
         assert [file.name for file in loaded.files_for_version()] == ["second.uvl"]
-        assert loaded.get_files_count() == 2
+        # Only the current (latest published) version counts, since #38.
+        assert loaded.get_files_count() == 1
         assert loaded.ds_meta_data.conceptrecid == 99
         assert loaded.ds_meta_data.concept_doi == "10.5072/concept.99"
 

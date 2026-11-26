@@ -37,9 +37,20 @@ class WorkflowDataset(BaseDataset):
     versions = db.relationship("WorkflowVersion", backref="workflow_dataset", lazy=True, cascade="all, delete")
 
     def files(self):
-        return [file for version in self.versions for file in version.files]
+        """Files of the current version (latest published, else latest draft)."""
+        latest = self.latest_version()
+        return list(latest.files) if latest else []
 
     def latest_version(self):
+        """Content of the current dataset version (#38).
+
+        With a draft of the next version open, visitors still see the latest
+        published one. Rows created before #36 have no dataset version and fall
+        back to the newest by creation date.
+        """
+        current = self.current_dataset_version()
+        if current is not None and current.workflow_version is not None:
+            return current.workflow_version
         return max(self.versions, key=lambda version: version.created_at, default=None)
 
     def workflow_metadata(self):
