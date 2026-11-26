@@ -256,8 +256,35 @@ Con `dataset_version.doi` no hace falta escribir cada DOI de versión en `DOIMap
   `v1/` se lee de la carpeta antigua, de modo que la migración no mueve nada.
   El ZIP de descarga recorre solo la versión elegida y, en la carpeta antigua,
   ignora las subcarpetas `v*/`.
-- **Pendiente para #38.** El flujo `actions/newversion` y la copia de archivos a
-  `v<n+1>/`; el almacenamiento y el modelo ya lo permiten sin cambios.
+- **#38.** `NewVersionService` (`app/features/dataset/versioning.py`) es común a
+  los dos tipos:
+  - `start(dataset)` abre el borrador `v<n+1>`: copia a `v<n+1>/` los archivos
+    de la última versión publicada y clona su contenido (`FeatureModel` con su
+    `FMMetaData`, o la `WorkflowVersion`). Si ya hay un borrador, lo devuelve.
+  - `add_file`, `replace_file` y `remove_file` solo cambian el borrador. Una
+    versión con DOI no se puede tocar. En UVL cada archivo `.uvl` se valida con
+    el parser de UVL; en workflow no se pueden quitar los archivos obligatorios
+    del paquete, solo reemplazarlos.
+  - `publish(version)` exige que algún archivo cambie, revalida los workflows
+    con el mismo `PackageValidator` de la subida (estructura, manifiesto, L1 y
+    L2) y exige que el mayor del manifiesto coincida con el número de versión
+    (riesgo 7.1). Después llama a `actions/newversion`, deja en la deposition
+    nueva exactamente los archivos de la versión, publica y guarda el DOI.
+    `DSMetaData` pasa a reflejar la versión nueva y el concept DOI no cambia.
+  - Cambio respecto a 5.4: `actions/newversion` se llama al **publicar**, no al
+    abrir el borrador. Así se puede editar un borrador sin Zenodo, y un fallo
+    no deja depositions huérfanas. El `deposition_id` del borrador se guarda en
+    cuanto existe, y un reintento lo reutiliza (riesgo 7.5).
+  - La nota L4 se borra al publicar una versión de workflow hasta que exista el
+    calificador de #18, porque la nota anterior describiría otro YAML.
+  - El estado del workflow sigue en `published`: la validación de la versión
+    nueva es del borrador y, si falla, el borrador no se publica.
+  - La página, el contador de archivos y la API muestran la versión actual (la
+    última publicada) mientras hay un borrador abierto:
+    `BaseDataset.current_dataset_version()`, `UVLDataset.current_feature_models()`
+    y `WorkflowDataset.latest_version()`.
+  - Pendiente fuera de #38: la interfaz (#39) y que el DOI antiguo siga
+    resolviendo en `/doi/<doi>/` (#40), porque `dataset_doi` pasa al nuevo.
 
 ## 10. Referencias
 
