@@ -48,9 +48,17 @@ class FlamapyService:
         Empty list means the model is syntactically valid.
         """
         hubfile = self._hubfiles.get_by_id(file_id)
+        return self.validate_uvl_path(hubfile.get_path())
+
+    def validate_uvl_path(self, path: str) -> list[str]:
+        """Syntax errors of the UVL file at *path*; empty when it is valid.
+
+        Used before a hubfile exists, for example when a new dataset version
+        adds or replaces a model (#38).
+        """
         listener = _UVLErrorListener()
 
-        lexer = UVLCustomLexer(FileStream(hubfile.get_path()))
+        lexer = UVLCustomLexer(FileStream(path, encoding="utf-8"))
         lexer.removeErrorListeners()
         lexer.addErrorListener(listener)
 

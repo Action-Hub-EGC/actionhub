@@ -236,6 +236,49 @@ class ZenodoService(BaseService):
             raise Exception("Failed to publish deposition")
         return response.json()
 
+    def new_version(self, deposition_id: int) -> int:
+        """
+        Open a draft for the next version of a published deposition (#38).
+
+        Zenodo answers with the deposition the action was called on and points
+        at the new draft in ``links.latest_draft``; fakenodo does the same.
+
+        Returns:
+            int: The ID of the new draft deposition.
+        """
+        url = f"{self.ZENODO_API_URL}/{deposition_id}/actions/newversion"
+        response = requests.post(url, params=self.params, headers=self.headers)
+        if response.status_code != 201:
+            raise Exception(f"Failed to create a new version. Error details: {response.json()}")
+        latest_draft = (response.json().get("links") or {}).get("latest_draft")
+        if not latest_draft:
+            raise Exception("The new version response has no links.latest_draft")
+        return int(latest_draft.rstrip("/").rsplit("/", 1)[-1])
+
+    def delete_file(self, deposition_id: int, file_id) -> None:
+        """
+        Delete a file from an unpublished deposition.
+
+        Args:
+            deposition_id (int): The ID of the deposition in Zenodo.
+            file_id: The ID of the file inside the deposition.
+        """
+        url = f"{self.ZENODO_API_URL}/{deposition_id}/files/{file_id}"
+        response = requests.delete(url, params=self.params, headers=self.headers)
+        if response.status_code != 204:
+            raise Exception(f"Failed to delete file {file_id} from deposition {deposition_id}")
+
+    def delete_deposition(self, deposition_id: int) -> None:
+        """
+        Delete an unpublished deposition, for example a discarded version draft (#38).
+
+        Args:
+            deposition_id (int): The ID of the deposition in Zenodo.
+        """
+        response = requests.delete(f"{self.ZENODO_API_URL}/{deposition_id}", params=self.params)
+        if response.status_code != 204:
+            raise Exception(f"Failed to delete deposition {deposition_id}")
+
     def get_deposition(self, deposition_id: int) -> dict:
         """
         Get a deposition from Zenodo.
