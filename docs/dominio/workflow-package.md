@@ -1,6 +1,6 @@
 # Formato de paquete de workflow
 
-- **Issues:** #14 (formato y subida), #15 y #16 (validación L1 y L2), #17 (metadatos).
+- **Issues:** #14 (formato y subida), #15 y #16 (validación L1 y L2), #17 (metadatos), #21 (descarga y datos de ejemplo).
 - **Formato:** un único archivo `.zip`.
 - **Estado:** implementado; validación L1 (sintaxis YAML), L2 (esquema oficial de GitHub Actions) y esquema del manifiesto.
 
@@ -84,7 +84,7 @@ Un paquete válido se guarda como **borrador no publicado**:
 - `WorkflowDataset` con `validation_status='validated'`, `package_format='zip'` y sin DOI.
 - `WorkflowVersion` con el manifiesto, el YAML del workflow y sus metadatos en `metadata_json` (ver «Metadatos del workflow»).
 - Un `Hubfile` por archivo del paquete, con `workflow_version_id`.
-- Los archivos se copian a `uploads/user_<id>/dataset_<id>/`.
+- Los archivos se copian a `uploads/user_<id>/dataset_<id>/v<n>/` (`HubfileService.version_directory`, #37).
 
 La publicación con DOI se describe en «Ciclo de vida».
 
@@ -129,6 +129,34 @@ Desde #17, cada `WorkflowVersion` guarda en `workflow_version.metadata_json` (te
 
 **Dónde se muestran.** La ficha `/workflow/<id>` enseña los metadatos de la última versión (`WorkflowDataset.workflow_metadata()`, que usa `latest_version()`) en la tarjeta «Qué hace este workflow». Las versiones subidas antes de la migración `004` tienen `metadata_json = NULL` y la ficha lo indica.
 
+## Descarga
+
+`GET /workflow/<id>/download` (botón «Descargar paquete (.zip)» en la ficha) devuelve un ZIP con el paquete tal como se subió:
+
+- Los archivos van en la raíz con sus nombres originales (`fixtures/input.txt` incluido), así que el ZIP vuelve a pasar `PackageValidator` y se puede subir otra vez.
+- Se sirve la última versión publicada (con DOI) y, si no hay ninguna, la última versión.
+- Las entradas salen de las filas `Hubfile` de esa versión, no de recorrer la carpeta, y las rutas de `HubfileService` (#37). Lo construye `WorkflowDatasetService.build_package_archive`.
+- El nombre es `<name>-<version>.zip` del manifiesto, por ejemplo `demo-workflow-1.0.0.zip`.
+- Cuenta una descarga por navegador con la misma cookie (`download_cookie`) y tabla (`ds_download_record`) que la descarga de datasets (#66, #67).
+- Devuelve `404` si el workflow no existe o no tiene archivos.
+
+La página pública del DOI (`/doi/<doi>/`) de un workflow enlaza a esta descarga. `/dataset/download/<id>` sigue siendo la descarga de los datasets UVL.
+
+## Datos de ejemplo
+
+`rosemary db:seed` ejecuta `WorkflowSeeder` (`app/features/workflow/seeders.py`, prioridad 3: después de usuarios y datasets UVL, antes de métricas). Cada carpeta de `app/features/workflow/seed_examples/` es un paquete con el formato de arriba; el seeder lo comprime, lo valida con `PackageValidator` y lo guarda por el mismo camino que una subida (`WorkflowDatasetService.store_package`): versión 1, `WorkflowVersion` con `metadata_json` y `Hubfile` con checksum y tamaño reales.
+
+| Paquete | Nota | Puntuación | Estado | Por qué |
+|---|---|---|---|---|
+| `secure-node-ci` | A | 96 | publicado (`10.1234/workflow1`) | Acciones fijadas por SHA, `contents: read`, `timeout-minutes`, `persist-credentials: false` |
+| `python-test-matrix` | B | 84 | publicado (`10.1234/workflow2`) | Permisos de lectura y timeouts, pero acciones fijadas por etiqueta |
+| `docker-image-publish` | C | 71 | publicado (`10.1234/workflow3`) | Permisos acotados, acciones de terceros por etiqueta, sin timeouts |
+| `nightly-dependency-update` | D | 55 | borrador (`validated`) | Sin `permissions`, token personal, `npx` sin versión |
+| `issue-label-bot` | E | 38 | borrador (`validated`) | Inyección de `github.event.issue.*` en `run`, acciones en `@main` |
+| `pr-preview-deploy` | F | 9 | publicado (`10.1234/workflow6`) | `pull_request_target` con checkout de la PR, `write-all`, `@master`, secretos con `echo`, `curl \| bash` |
+
+Mientras no exista la calificación L4 (#18), la nota y la puntuación se fijan en el seeder. Los publicados tienen DOI falso sin deposition: no se llama a Zenodo ni a fakenodo. Si un paquete ya existe (mismo `name`), el seeder no lo vuelve a crear.
+
 ## Errores habituales
 
 | Error | Causa |
@@ -146,6 +174,7 @@ Desde #17, cada `WorkflowVersion` guarda en `workflow_version.metadata_json` (te
 - `app/features/workflow/lifecycle.py`
 - `app/features/workflow/validation.py`
 - `app/features/workflow/metadata.py`
+- `app/features/workflow/seeders.py` y `app/features/workflow/seed_examples/`
 - `app/features/workflow/schemas/actionhub.schema.json`
 - `app/features/workflow/schemas/github-workflow.schema.json`
 - `app/features/workflow/services.py`

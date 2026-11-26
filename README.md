@@ -66,6 +66,8 @@ docker compose -f docker/docker-compose.dev.yml exec web flask db upgrade
 docker compose -f docker/docker-compose.dev.yml exec web rosemary db:seed -y
 ```
 
+`rosemary db:seed` crea dos usuarios (`user1@example.com` y `user2@example.com`, contraseña `1234`), cuatro datasets UVL y seis workflows de ejemplo con notas de seguridad de la A a la F (ver [formato de paquete](docs/dominio/workflow-package.md#datos-de-ejemplo)).
+
 ## Estructura
 
 ```text
