@@ -51,7 +51,9 @@ contadores; el bloque añade lo que solo tiene sentido para ese tipo.
 
 1. Crear el modelo y su discriminador en `BaseDataset`.
 2. Añadir su contenido de versión (`DatasetVersion` ya es común).
-3. Implementar `files()` o la relación de archivos que use el tipo.
+3. Implementar `files()` o la relación de archivos que use el tipo. Debe
+   devolver los archivos de la versión actual (`current_dataset_version()`), no
+   los de todas las versiones (#38).
 4. Crear `app/features/<tipo>/templates/<tipo>/blocks/<tipo>.html`.
 5. En `init_feature`, llamar a `register_dataset_block("<tipo>", "<ruta>")`.
 6. Añadir el tipo a `DATASET_TYPES` del explorador si debe poder filtrarse.
