@@ -1,0 +1,9 @@
+name: docker-image-publish
+version: 1.0.0
+description: Construye y publica una imagen de contenedor en GitHub Container Registry al etiquetar una versión.
+license: MIT
+authors:
+  - name: Linus Torvalds
+tags:
+  - docker
+  - release

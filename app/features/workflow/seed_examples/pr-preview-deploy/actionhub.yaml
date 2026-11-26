@@ -1,0 +1,9 @@
+name: pr-preview-deploy
+version: 0.0.1
+description: Despliega una vista previa de cada pull request. Ejemplo deliberadamente inseguro.
+license: MIT
+authors:
+  - name: Mallory Example
+tags:
+  - deploy
+  - insecure-example

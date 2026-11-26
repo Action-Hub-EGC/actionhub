@@ -1,0 +1,9 @@
+name: issue-label-bot
+version: 0.1.0
+description: Etiqueta automáticamente las issues nuevas según las palabras de su título.
+license: MIT
+authors:
+  - name: Alan Turing
+tags:
+  - issues
+  - automation

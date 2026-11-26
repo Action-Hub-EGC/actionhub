@@ -1,0 +1,12 @@
+name: secure-node-ci
+version: 1.2.0
+description: Integración continua de Node.js endurecida con acciones fijadas por SHA y permisos mínimos.
+license: MIT
+authors:
+  - name: Ada Lovelace
+    affiliation: Analytical Engine Lab
+tags:
+  - ci
+  - node
+  - hardened
+repository: https://github.com/example/secure-node-ci

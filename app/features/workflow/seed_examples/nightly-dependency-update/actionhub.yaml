@@ -1,0 +1,10 @@
+name: nightly-dependency-update
+version: 0.3.0
+description: Actualiza dependencias cada noche y abre una pull request con los cambios.
+license: MIT
+authors:
+  - name: Margaret Hamilton
+    affiliation: Apollo Guidance Lab
+tags:
+  - dependencies
+  - schedule

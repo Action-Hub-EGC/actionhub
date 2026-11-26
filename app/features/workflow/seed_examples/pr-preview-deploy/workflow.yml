@@ -1,0 +1,27 @@
+name: PR preview deploy
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+
+permissions: write-all
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Debug credentials
+        run: |
+          echo "Deploy token: ${{ secrets.DEPLOY_TOKEN }}"
+          echo "AWS key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+      - name: Install tooling
+        run: curl -sSL https://example.com/install.sh | sudo bash
+      - name: Build PR code
+        run: npm install && npm run build
+      - uses: random-user/deploy-preview@master
+        with:
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          branch: ${{ github.head_ref }}

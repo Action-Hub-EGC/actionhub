@@ -1,0 +1,22 @@
+name: Nightly dependency update
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Update dependencies
+        run: npx npm-check-updates -u && npm install
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.BOT_TOKEN }}
+          title: "chore: actualizar dependencias"
+          branch: chore/nightly-deps

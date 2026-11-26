@@ -1,6 +1,6 @@
 """Deterministic activity records for the personal dashboard (#65).
 
-Runs after the dataset seeder and gives every seeded dataset a small,
+Runs after the UVL and workflow seeders and gives every seeded dataset a small,
 repeatable history: two active months and one quiet month. Tests can then
 assert exact monthly counts instead of depending on wall-clock data.
 """
@@ -27,7 +27,7 @@ def month_start(now: datetime, months_ago: int) -> datetime:
 
 
 class MetricsSeeder(BaseSeeder):
-    priority = 3
+    priority = 4  # After the UVL (2) and workflow (3) seeders.
 
     def run(self):
         datasets = BaseDataset.query.order_by(BaseDataset.id).all()
