@@ -74,6 +74,24 @@ class WorkflowDatasetService(BaseService):
         if not result.valid:
             return None, result.issues
 
+        try:
+            dataset = self.store_package(result, current_user)
+        except Exception as exc:
+            logger.exception("Could not persist workflow package: %s", exc)
+            return None, [PackageIssue("No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo.")]
+        return dataset, []
+
+    def store_package(self, result, owner, **fields) -> WorkflowDataset:
+        """Persist a package that already passed ``PackageValidator`` and commit.
+
+        Creates the metadata, the workflow (``validation_status='validated'``
+        unless ``fields`` says otherwise), its version 1, the ``WorkflowVersion``
+        with ``metadata_json`` and one ``Hubfile`` per package file, written
+        under ``HubfileService.version_directory``. ``fields`` sets extra
+        ``WorkflowDataset`` columns, e.g. ``grade`` and ``security_score`` from
+        the seeders. On any error the session is rolled back, the written
+        files are removed and the exception is raised again.
+        """
         manifest = result.manifest
         session = self.repository.session
         destination = None
@@ -97,12 +115,12 @@ class WorkflowDatasetService(BaseService):
                 )
 
             manifest_json = json.dumps(manifest, ensure_ascii=False, sort_keys=True)
+            columns = {"validation_status": ValidationStatus.VALIDATED, "package_format": "zip", **fields}
             dataset = WorkflowDataset(
-                user_id=current_user.id,
+                user_id=owner.id,
                 ds_meta_data_id=metadata.id,
                 manifest_json=manifest_json,
-                validation_status=ValidationStatus.VALIDATED,
-                package_format="zip",
+                **columns,
             )
             session.add(dataset)
             session.flush()
@@ -146,13 +164,12 @@ class WorkflowDatasetService(BaseService):
                 )
 
             session.commit()
-            return dataset, []
-        except Exception as exc:
+            return dataset
+        except Exception:
             session.rollback()
             if destination:
                 shutil.rmtree(destination, ignore_errors=True)
-            logger.exception("Could not persist workflow package: %s", exc)
-            return None, [PackageIssue("No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo.")]
+            raise
 
     def extract_metadata(self, text: str):
         return WorkflowMetadataExtractor().extract_text(text)
