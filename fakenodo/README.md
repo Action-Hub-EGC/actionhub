@@ -107,6 +107,7 @@ docker volume rm uvlhub_fakenodo_data
 Los tests de `fakenodo` están en `app/features/zenodo/tests/`:
 - `test_fakenodo.py` y `test_store.py`: pruebas unitarias y de API HTTP (no necesitan base de datos).
 - `test_fakenodo_contract.py`: pruebas de contrato que ejecutan `ZenodoService` contra un servidor HTTP real de `fakenodo`.
+- `tests/test_versioning_fakenodo.py` (#41): versionado mayor de punta a punta contra un servidor HTTP real de `fakenodo`, para UVL y workflow: DOI nuevo por versión, concept DOI compartido y archivos antiguos intactos.
 ```bash
 docker compose -f docker/docker-compose.dev.yml exec web \
   pytest -v app/features/zenodo/tests/test_fakenodo.py app/features/zenodo/tests/test_store.py app/features/zenodo/tests/test_fakenodo_contract.py
