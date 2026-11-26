@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import shutil
+import zipfile
 from datetime import datetime
+from io import BytesIO
 
 from splent_framework.services.BaseService import BaseService
 
@@ -170,6 +172,56 @@ class WorkflowDatasetService(BaseService):
             if destination:
                 shutil.rmtree(destination, ignore_errors=True)
             raise
+
+    def downloadable_version(self, workflow: WorkflowDataset, dataset_version=None) -> WorkflowVersion | None:
+        """Workflow version that a download serves.
+
+        ``dataset_version`` defaults to the latest published version, then to
+        the latest draft, like the dataset download. Versions created before
+        #36 have no ``DatasetVersion``; they fall back to the latest
+        ``WorkflowVersion``.
+        """
+        dataset_version = (
+            dataset_version or workflow.latest_published_dataset_version() or workflow.latest_dataset_version()
+        )
+        if dataset_version is not None and dataset_version.workflow_version is not None:
+            return dataset_version.workflow_version
+        return workflow.latest_version()
+
+    def build_package_archive(self, workflow: WorkflowDataset, version=None) -> tuple[bytes, str] | None:
+        """Zip one version of the package and return ``(zip_bytes, filename)``.
+
+        The archive holds exactly the files uploaded for that version, at the
+        root and under their original names (``fixtures/x.txt`` included), so
+        it is a package that ``PackageValidator`` accepts again. Entries come
+        from the version's ``Hubfile`` rows, never from walking the folder,
+        and their paths from ``HubfileService`` (#37). Returns ``None`` when
+        the workflow has no version with files. A file missing on disk raises
+        ``FileNotFoundError``.
+        """
+        workflow_version = self.downloadable_version(workflow, version)
+        if workflow_version is None or not workflow_version.files:
+            return None
+
+        hubfiles = HubfileService()
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for hubfile in sorted(workflow_version.files, key=lambda item: item.name):
+                archive.write(hubfiles.get_path_by_hubfile(hubfile), arcname=hubfile.name)
+        return buffer.getvalue(), self.package_filename(workflow, workflow_version)
+
+    @staticmethod
+    def package_filename(workflow: WorkflowDataset, workflow_version: WorkflowVersion) -> str:
+        """``<name>-<version>.zip`` from the manifest, or ``workflow_<id>.zip``."""
+        try:
+            manifest = json.loads(workflow_version.manifest_json or "{}")
+        except ValueError:
+            manifest = {}
+        name = manifest.get("name") if isinstance(manifest, dict) else None
+        if not name:
+            return f"workflow_{workflow.id}.zip"
+        version = manifest.get("version")
+        return f"{name}-{version}.zip" if version else f"{name}.zip"
 
     def extract_metadata(self, text: str):
         return WorkflowMetadataExtractor().extract_text(text)

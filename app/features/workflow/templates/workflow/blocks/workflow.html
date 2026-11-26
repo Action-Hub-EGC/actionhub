@@ -54,5 +54,10 @@
         <a href="{{ url_for('workflow.detail', dataset_id=dataset.id) }}" class="btn btn-outline-primary btn-sm">
             Ver detalle del workflow
         </a>
+        {% if dataset.versions %}
+        <a href="{{ url_for('workflow.download', dataset_id=dataset.id) }}" class="btn btn-outline-secondary btn-sm">
+            <i data-feather="download"></i> Descargar paquete (.zip)
+        </a>
+        {% endif %}
     </div>
 </div>

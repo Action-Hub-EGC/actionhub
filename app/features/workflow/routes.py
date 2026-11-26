@@ -1,9 +1,11 @@
 import logging
+import uuid
+from io import BytesIO
 
-from flask import abort, flash, jsonify, make_response, redirect, render_template, url_for
+from flask import abort, flash, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required
 
-from app.features.dataset.services import DSViewRecordService
+from app.features.dataset.services import DSDownloadRecordService, DSViewRecordService
 from app.features.metrics.services import DatasetCounterService
 from app.features.workflow import workflow_bp
 from app.features.workflow.forms import WorkflowPackageForm, WorkflowPublishForm
@@ -15,6 +17,7 @@ logger = logging.getLogger(__name__)
 workflow_service = WorkflowDatasetService()
 view_record_service = DSViewRecordService()
 counter_service = DatasetCounterService()
+download_record_service = DSDownloadRecordService()
 
 
 @workflow_bp.route("/workflow")
@@ -77,3 +80,27 @@ def publish(dataset_id):
         logger.info("Workflow %s published with DOI %s", dataset_id, doi)
         flash(f"Workflow publicado con DOI {doi}.", "success")
     return redirect(url_for("workflow.detail", dataset_id=dataset_id))
+
+
+@workflow_bp.route("/workflow/<int:dataset_id>/download")
+def download(dataset_id):
+    """Download the package of the latest published version, or the latest draft, as a ``.zip``."""
+    workflow = workflow_service.get_or_404(dataset_id)
+    try:
+        archive = workflow_service.build_package_archive(workflow)
+    except FileNotFoundError:
+        logger.exception("Workflow %s has files missing on disk", dataset_id)
+        abort(404)
+    if archive is None:
+        abort(404)
+    data, filename = archive
+
+    # Same cookie and download record as the dataset download, so both count alike (#67).
+    cookie = request.cookies.get("download_cookie") or str(uuid.uuid4())
+    response = make_response(
+        send_file(BytesIO(data), mimetype="application/zip", as_attachment=True, download_name=filename)
+    )
+    if not request.cookies.get("download_cookie"):
+        response.set_cookie("download_cookie", cookie, max_age=60 * 60 * 24 * 365 * 2)
+    download_record_service.record_download(current_user, dataset_id, cookie)
+    return response

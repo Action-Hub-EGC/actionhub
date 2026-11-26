@@ -13,6 +13,12 @@
         <p class="text-secondary mb-0">{{ workflow.ds_meta_data.description }}</p>
     </div>
     <div class="d-flex align-items-start gap-2">
+        {% if versions %}
+        <a href="{{ url_for('workflow.download', dataset_id=workflow.id) }}" class="btn btn-outline-primary"
+            id="workflow-download" title="Descarga el paquete .zip de la última versión publicada (o del borrador si aún no hay ninguna).">
+            <i data-feather="download"></i> Descargar paquete (.zip)
+        </a>
+        {% endif %}
         {% if current_user.is_authenticated and current_user.id == workflow.user_id and workflow.validation_status == 'validated' %}
         <form method="POST" action="{{ url_for('workflow.publish', dataset_id=workflow.id) }}">
             {{ publish_form.hidden_tag() }}
