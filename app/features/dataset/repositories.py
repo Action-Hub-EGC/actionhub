@@ -106,8 +106,9 @@ class DataSetRepository(BaseRepository):
     """UVL dataset repository.
 
     It keeps the historical name and creates ``UVLDataset`` rows by default.
-    Common reads that must include every dataset type will move to a
-    ``BaseDatasetRepository`` when ``WorkflowDataset`` lands (#12).
+    The per-user listing of the profile (``paginate_for_user`` and
+    ``count_for_user``) reads ``BaseDataset`` so every dataset type shows up;
+    the other reads stay UVL-only for ``/dataset/list`` and the UVL pages.
     """
 
     def __init__(self):
@@ -145,14 +146,16 @@ class DataSetRepository(BaseRepository):
         return self.model.query.join(DSMetaData).filter(DSMetaData.dataset_doi.is_(None)).count()
 
     def paginate_for_user(self, user_id: int, page: int, per_page: int):
+        """Datasets of every type owned by *user_id*, newest first."""
         return (
-            self.model.query.filter(BaseDataset.user_id == user_id)
-            .order_by(BaseDataset.created_at.desc())
+            BaseDataset.query.filter(BaseDataset.user_id == user_id)
+            .order_by(BaseDataset.created_at.desc(), BaseDataset.id.desc())
             .paginate(page=page, per_page=per_page, error_out=False)
         )
 
     def count_for_user(self, user_id: int) -> int:
-        return self.model.query.filter(BaseDataset.user_id == user_id).count()
+        """Datasets of every type owned by *user_id*, like the profile metrics."""
+        return BaseDataset.query.filter(BaseDataset.user_id == user_id).count()
 
     def latest_synchronized(self):
         return (

@@ -7,6 +7,7 @@ import pytest
 from app import db
 from app.features.dataset.models import DataSet, DSDownloadRecord, DSMetaData, DSViewRecord, PublicationType
 from app.features.profile.repositories import UserProfileRepository
+from app.features.workflow.models import WorkflowDataset
 
 pytestmark = pytest.mark.integration
 
@@ -110,6 +111,34 @@ def test_summary_lists_owned_datasets_and_paginates(test_app, test_client):
     assert "dataset-0" in second_body
     assert "dataset-1" in second_body
     assert "dataset-6" not in second_body
+
+
+def test_summary_lists_workflows_with_a_link_to_their_page(test_app, test_client):
+    signup(test_client, email="workflow-owner@example.com")
+    with test_app.app_context():
+        profile = UserProfileRepository().get_by_column("user_id", 1)[0]
+        make_dataset(profile.user_id, "uvl-dataset", BASE_TIME)
+        meta = DSMetaData(title="ci-workflow", description="A workflow", publication_type=PublicationType.NONE)
+        db.session.add(meta)
+        db.session.flush()
+        workflow = WorkflowDataset(
+            user_id=profile.user_id,
+            ds_meta_data_id=meta.id,
+            manifest_json="{}",
+            created_at=BASE_TIME + timedelta(minutes=1),
+        )
+        db.session.add(workflow)
+        db.session.commit()
+        workflow_id = workflow.id
+
+    body = test_client.get("/profile/summary").get_data(as_text=True)
+
+    assert "2 datasets" in body
+    assert "No datasets uploaded." not in body
+    assert "uvl-dataset" in body
+    assert "ci-workflow" in body
+    assert f'href="/workflow/{workflow_id}"' in body
+    assert test_client.get(f"/workflow/{workflow_id}").status_code == 200
 
 
 def test_edit_page_renders_form_fields(test_client):

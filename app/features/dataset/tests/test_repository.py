@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app import db
 from app.features.auth.repositories import UserRepository
 from app.features.dataset import repositories as dataset_repositories
 from app.features.dataset.models import PublicationType
@@ -97,6 +98,51 @@ def test_paginate_for_user_returns_newest_first_and_respects_page_size(test_app,
 
         second = DataSetRepository().paginate_for_user(owner.id, page=2, per_page=2)
         assert [d.id for d in second.items] == [oldest.id]
+
+
+def _make_workflow(user, title="Workflow", doi=None, created_at=None):
+    from app.features.workflow.models import WorkflowDataset
+
+    meta = DSMetaDataRepository().create(
+        title=title,
+        description=f"Description for {title}",
+        publication_type=PublicationType.NONE,
+        dataset_doi=doi,
+    )
+    workflow = WorkflowDataset(
+        user_id=user.id,
+        ds_meta_data_id=meta.id,
+        manifest_json="{}",
+        created_at=created_at or datetime.now(timezone.utc),
+    )
+    db.session.add(workflow)
+    db.session.commit()
+    return workflow
+
+
+def test_user_listing_includes_every_dataset_type(test_app, clean_database):
+    from app.features.workflow.models import WorkflowDataset
+
+    with test_app.app_context():
+        owner = _make_user("owner@example.com")
+        other = _make_user("other@example.com")
+        base = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        uvl = _make_dataset(owner, title="UVL", doi="10.1234/uvl", created_at=base)
+        workflow = _make_workflow(owner, title="Workflow", doi="10.1234/wf", created_at=base + timedelta(days=1))
+        _make_workflow(other, title="Not mine")
+
+        repo = DataSetRepository()
+        assert repo.count_for_user(owner.id) == 2
+        assert repo.count_for_user(other.id) == 1
+
+        page = repo.paginate_for_user(owner.id, page=1, per_page=5)
+        assert page.total == 2
+        assert [d.id for d in page.items] == [workflow.id, uvl.id]
+        assert isinstance(page.items[0], WorkflowDataset)
+
+        # The UVL reads behind /dataset/list keep ignoring workflows.
+        assert [d.id for d in repo.get_synchronized(owner.id)] == [uvl.id]
+        assert repo.count_synchronized_datasets() == 1
 
 
 def test_latest_synchronized_caps_the_result_at_five_newest(test_app, clean_database):

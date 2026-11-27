@@ -167,7 +167,11 @@
                             <tr>
                                 <td>
 
-                                    {% if dataset.ds_meta_data.dataset_doi %}
+                                    {% if dataset.type == 'workflow' %}
+                                        <a href="{{ url_for('workflow.detail', dataset_id=dataset.id) }}">
+                                            {{ dataset.ds_meta_data.title }}
+                                        </a>
+                                    {% elif dataset.ds_meta_data.dataset_doi %}
                                         <a href="{{ dataset.get_uvlhub_doi() }}">
                                             {{ dataset.ds_meta_data.title }}
                                         </a>
