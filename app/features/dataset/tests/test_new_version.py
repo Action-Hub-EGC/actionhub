@@ -251,6 +251,8 @@ def test_failed_publication_keeps_the_draft_and_can_be_retried(test_app, test_cl
     with test_app.app_context():
         workflow = published_workflow(_owner("wf-retry@example.com"))
         first_doi = workflow.ds_meta_data.dataset_doi
+        workflow.grade, workflow.security_score = "A", 95
+        db.session.commit()
         service = NewVersionService()
         draft = service.start(workflow)
         service.replace_file(draft, "workflow.yml", WORKFLOW.replace("@v4", "@v5").encode())
@@ -261,14 +263,69 @@ def test_failed_publication_keeps_the_draft_and_can_be_retried(test_app, test_cl
         with pytest.raises(VersionPublicationError):
             service.publish(draft)
 
+        db.session.expire_all()
         draft = db.session.get(DatasetVersion, draft.id)
         assert draft.doi is None and draft.deposition_id is not None
         assert workflow.ds_meta_data.dataset_doi == first_doi
+        # v1 is still the published version, so it keeps its L4 grade.
+        assert (workflow.grade, workflow.security_score) == ("A", 95)
 
         monkeypatch.setattr(ZenodoService, "publish_deposition", original)
         doi = service.publish(draft)
         assert doi != first_doi
         assert len(fakenodo.store.list_versions(workflow.ds_meta_data.conceptrecid)) == 2
+        assert workflow.grade is None and workflow.security_score is None
+
+
+def test_retry_recovers_the_doi_when_zenodo_published_but_did_not_answer(
+    test_app, test_client, uploads, fakenodo, monkeypatch
+):
+    with test_app.app_context():
+        workflow = published_workflow(_owner("wf-lost-answer@example.com"))
+        workflow.grade, workflow.security_score = "B", 85
+        db.session.commit()
+        service = NewVersionService()
+        draft = service.start(workflow)
+        service.replace_file(draft, "workflow.yml", WORKFLOW.replace("@v4", "@v5").encode())
+        service.replace_file(draft, "actionhub.yaml", MANIFEST.replace("1.0.0", "2.0.0").encode())
+
+        # The deposition is published, then reading it back fails.
+        original_publish = ZenodoService.publish_deposition
+        original_get = ZenodoService.get_deposition
+        state = {"published": False}
+
+        def publish_then_break(self, deposition_id):
+            result = original_publish(self, deposition_id)
+            state["published"] = True
+            return result
+
+        def get_after_publish_fails(self, deposition_id):
+            if state["published"]:
+                raise RuntimeError("Zenodo timed out")
+            return original_get(self, deposition_id)
+
+        monkeypatch.setattr(ZenodoService, "publish_deposition", publish_then_break)
+        monkeypatch.setattr(ZenodoService, "get_deposition", get_after_publish_fails)
+        with pytest.raises(VersionPublicationError):
+            service.publish(draft)
+
+        db.session.expire_all()
+        draft = db.session.get(DatasetVersion, draft.id)
+        remote = fakenodo.store.get(draft.deposition_id)
+        assert remote["state"] == "done" and draft.doi is None
+        assert (workflow.grade, workflow.security_score) == ("B", 85)
+
+        # The retry reads the DOI instead of touching the published deposition.
+        monkeypatch.setattr(ZenodoService, "publish_deposition", original_publish)
+        monkeypatch.setattr(ZenodoService, "get_deposition", original_get)
+        calls_before = len(fakenodo.requests.calls)
+        doi = service.publish(draft)
+
+        retry_calls = fakenodo.requests.calls[calls_before:]
+        assert doi == remote["doi"]
+        assert [method for method, _ in retry_calls] == ["GET"]
+        assert workflow.ds_meta_data.dataset_doi == doi
+        assert workflow.grade is None
 
 
 # ── Rules ───────────────────────────────────────────────────────────────

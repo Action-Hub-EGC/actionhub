@@ -230,9 +230,11 @@ class NewVersionService:
                 db.session.commit()
             deposition_id = version.deposition_id
 
-            self._mirror_files(deposition_id, files)
-            self.zenodo.publish_deposition(deposition_id)
-            published = self.zenodo.get_deposition(deposition_id)
+            published = self._already_published(deposition_id)
+            if published is None:
+                self._mirror_files(deposition_id, files)
+                self.zenodo.publish_deposition(deposition_id)
+                published = self.zenodo.get_deposition(deposition_id)
             doi = published.get("doi")
             if not doi:
                 raise VersionPublicationError("La deposition se publicó sin DOI.")
@@ -255,9 +257,27 @@ class NewVersionService:
         metadata.concept_doi = metadata.concept_doi or published.get("conceptdoi")
         if version.workflow_version is not None:
             dataset.manifest_json = version.workflow_version.manifest_json
+            # L4 (#18) is not implemented yet. The grade of the previous
+            # version would describe another YAML, so it is cleared, but only
+            # once the new version is really the published one. When the L4
+            # grader exists, it is called here instead.
+            dataset.grade = None
+            dataset.security_score = None
         db.session.commit()
         logger.info("Dataset %s: v%s published with DOI %s", dataset.id, version.number, doi)
         return doi
+
+    def _already_published(self, deposition_id: int):
+        """The deposition, if an earlier attempt already published it; else ``None``.
+
+        Zenodo can publish and then fail to answer (for example on
+        ``get_deposition``). A published deposition cannot take file changes,
+        so a retry must only read its DOI instead of mirroring files again.
+        """
+        deposition = self.zenodo.get_deposition(deposition_id)
+        if deposition.get("state") == "done" and deposition.get("doi"):
+            return deposition
+        return None
 
     # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -430,12 +450,8 @@ class NewVersionService:
         content.manifest_json = json.dumps(result.manifest, ensure_ascii=False, sort_keys=True)
         content.workflow_yaml = result.workflow_yaml
         content.metadata_json = WorkflowDatasetService().metadata_json_for(result.workflow_yaml)
-        # L4 (#18) is not implemented yet. A grade computed for the previous
-        # YAML would describe the wrong file, so it is cleared until the L4
-        # grader exists and is called here.
-        workflow = version.dataset
-        workflow.grade = None
-        workflow.security_score = None
+        # Only the draft's own rows change here. The dataset's grade still
+        # describes the published version until the new one is published.
         db.session.flush()
 
     def _mirror_files(self, deposition_id: int, files) -> None:

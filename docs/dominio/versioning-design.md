@@ -276,7 +276,12 @@ Con `dataset_version.doi` no hace falta escribir cada DOI de versión en `DOIMap
     no deja depositions huérfanas. El `deposition_id` del borrador se guarda en
     cuanto existe, y un reintento lo reutiliza (riesgo 7.5).
   - La nota L4 se borra al publicar una versión de workflow hasta que exista el
-    calificador de #18, porque la nota anterior describiría otro YAML.
+    calificador de #18, porque la nota anterior describiría otro YAML. Se borra
+    solo cuando la versión nueva ya está publicada: si la publicación falla, la
+    versión vigente conserva su nota.
+  - Si Zenodo publica la deposition pero falla la respuesta, el borrador queda
+    sin DOI. Al reintentar, `publish` ve que la deposition ya está en `done` y
+    solo lee su DOI, sin volver a tocar sus archivos.
   - El estado del workflow sigue en `published`: la validación de la versión
     nueva es del borrador y, si falla, el borrador no se publica.
   - La página, el contador de archivos y la API muestran la versión actual (la
