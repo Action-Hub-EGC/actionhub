@@ -1,13 +1,45 @@
 from datetime import datetime
 from typing import Iterable, Optional
 
-from sqlalchemy import case, desc, func
+from sqlalchemy import case, desc, func, select, union_all
 
 from app import db
 from app.features.dataset.models import BaseDataset, DSDownloadRecord, DSMetaData, DSViewRecord
 from app.features.featuremodel.models import FeatureModel
 from app.features.hubfile.models import Hubfile, HubfileDownloadRecord, HubfileViewRecord
 from app.features.metrics.utils import as_utc
+from app.features.workflow.models import WorkflowVersion
+
+
+def _versions():
+    """One row per version with the dataset that owns it, for every type.
+
+    A UVL version is a ``FeatureModel`` and a workflow version is a
+    ``WorkflowVersion`` (``docs/dominio/metrics-audit.md`` §7.1). The two
+    tables never share a dataset, so their union has no duplicates.
+    """
+    return union_all(
+        select(FeatureModel.id.label("version_id"), FeatureModel.data_set_id.label("dataset_id")),
+        select(WorkflowVersion.id.label("version_id"), WorkflowVersion.workflow_dataset_id.label("dataset_id")),
+    ).subquery()
+
+
+def _files():
+    """One row per file with its size and the dataset that owns it.
+
+    ``ck_file_one_version`` guarantees a file hangs from exactly one of
+    ``feature_model`` or ``workflow_version``, so each file appears once.
+    """
+    return (
+        db.session.query(
+            Hubfile.id.label("file_id"),
+            Hubfile.size.label("size"),
+            func.coalesce(FeatureModel.data_set_id, WorkflowVersion.workflow_dataset_id).label("dataset_id"),
+        )
+        .outerjoin(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
+        .outerjoin(WorkflowVersion, Hubfile.workflow_version_id == WorkflowVersion.id)
+        .subquery()
+    )
 
 
 class DatasetCounterRepository:
@@ -65,6 +97,8 @@ class MetricsRepository:
     Every query joins the record to its live resource and filters by
     ``BaseDataset.user_id``. The ``user_id`` stored in a view/download record is
     the visitor, never the owner, so it must not be used for attribution.
+    Versions and files reach their dataset through ``FeatureModel`` (UVL) or
+    ``WorkflowVersion`` (workflow), see ``_versions`` and ``_files``.
     """
 
     def owner_catalog_metrics(self, owner_id: int) -> dict:
@@ -81,15 +115,22 @@ class MetricsRepository:
             .one()
         )
 
-        versions_files = (
+        versions = _versions()
+        versions_total = (
+            db.session.query(func.count(versions.c.version_id))
+            .select_from(versions)
+            .join(BaseDataset, versions.c.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
+            .scalar()
+        )
+        files = _files()
+        files_size = (
             db.session.query(
-                func.count(func.distinct(FeatureModel.id)).label("versions_total"),
-                func.count(Hubfile.id).label("files_total"),
-                func.coalesce(func.sum(Hubfile.size), 0).label("size_total_bytes"),
+                func.count(files.c.file_id).label("files_total"),
+                func.coalesce(func.sum(files.c.size), 0).label("size_total_bytes"),
             )
-            .select_from(BaseDataset)
-            .join(FeatureModel, FeatureModel.data_set_id == BaseDataset.id)
-            .outerjoin(Hubfile, Hubfile.feature_model_id == FeatureModel.id)
+            .select_from(files)
+            .join(BaseDataset, files.c.dataset_id == BaseDataset.id)
             .filter(BaseDataset.user_id == owner_id)
             .one()
         )
@@ -101,9 +142,9 @@ class MetricsRepository:
             "workflows_total": workflows_total,
             "published_total": published_total,
             "draft_total": workflows_total - published_total,
-            "versions_total": int(versions_files.versions_total or 0),
-            "files_total": int(versions_files.files_total or 0),
-            "size_total_bytes": int(versions_files.size_total_bytes or 0),
+            "versions_total": int(versions_total or 0),
+            "files_total": int(files_size.files_total or 0),
+            "size_total_bytes": int(files_size.size_total_bytes or 0),
         }
 
     def owner_activity_metrics(self, owner_id: int) -> dict:
@@ -119,22 +160,8 @@ class MetricsRepository:
             .filter(BaseDataset.user_id == owner_id)
             .scalar()
         )
-        file_views = (
-            db.session.query(func.count(HubfileViewRecord.id))
-            .join(Hubfile, HubfileViewRecord.file_id == Hubfile.id)
-            .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
-            .filter(BaseDataset.user_id == owner_id)
-            .scalar()
-        )
-        file_downloads = (
-            db.session.query(func.count(HubfileDownloadRecord.id))
-            .join(Hubfile, HubfileDownloadRecord.file_id == Hubfile.id)
-            .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
-            .filter(BaseDataset.user_id == owner_id)
-            .scalar()
-        )
+        file_views = self._owner_file_records(func.count(HubfileViewRecord.id), HubfileViewRecord, owner_id)
+        file_downloads = self._owner_file_records(func.count(HubfileDownloadRecord.id), HubfileDownloadRecord, owner_id)
         unique_visitors = (
             db.session.query(func.count(func.distinct(DSViewRecord.view_cookie)))
             .join(BaseDataset, DSViewRecord.dataset_id == BaseDataset.id)
@@ -149,6 +176,19 @@ class MetricsRepository:
             "file_downloads": int(file_downloads or 0),
             "unique_visitors": int(unique_visitors or 0),
         }
+
+    @staticmethod
+    def _owner_file_records(aggregate, record_model, owner_id: int):
+        """*aggregate* over the file records of files owned by *owner_id*."""
+        files = _files()
+        return (
+            db.session.query(aggregate)
+            .select_from(record_model)
+            .join(files, record_model.file_id == files.c.file_id)
+            .join(BaseDataset, files.c.dataset_id == BaseDataset.id)
+            .filter(BaseDataset.user_id == owner_id)
+            .scalar()
+        )
 
     def owner_monthly_activity(self, owner_id: int, since: datetime) -> dict[tuple[int, int], dict[str, int]]:
         """Dataset views and downloads per ``(year, month)`` since *since*.
@@ -191,51 +231,45 @@ class MetricsRepository:
             .join(BaseDataset, DSDownloadRecord.dataset_id == BaseDataset.id)
             .filter(BaseDataset.user_id == owner_id)
             .scalar(),
-            db.session.query(func.max(HubfileViewRecord.view_date))
-            .join(Hubfile, HubfileViewRecord.file_id == Hubfile.id)
-            .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
-            .filter(BaseDataset.user_id == owner_id)
-            .scalar(),
-            db.session.query(func.max(HubfileDownloadRecord.download_date))
-            .join(Hubfile, HubfileDownloadRecord.file_id == Hubfile.id)
-            .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .join(BaseDataset, FeatureModel.data_set_id == BaseDataset.id)
-            .filter(BaseDataset.user_id == owner_id)
-            .scalar(),
+            self._owner_file_records(func.max(HubfileViewRecord.view_date), HubfileViewRecord, owner_id),
+            self._owner_file_records(func.max(HubfileDownloadRecord.download_date), HubfileDownloadRecord, owner_id),
         ]
         # MariaDB hands back naive datetimes; they are all UTC by convention.
         normalized = [as_utc(value) for value in candidates]
         return max((value for value in normalized if value is not None), default=None)
 
     def workflow_metrics(self, owner_id: int) -> list:
+        """One row per dataset of *owner_id*, of any type.
+
+        Every count comes from a subquery grouped by dataset, so joining them
+        never multiplies rows.
+        """
         dataset_views = DatasetCounterRepository.views_by_dataset()
         dataset_downloads = DatasetCounterRepository.downloads_by_dataset()
-        file_views = (
+
+        versions = _versions()
+        versions_by_dataset = (
             db.session.query(
-                FeatureModel.data_set_id.label("dataset_id"),
-                func.count(HubfileViewRecord.id).label("file_views"),
+                versions.c.dataset_id.label("dataset_id"),
+                func.count(versions.c.version_id).label("versions_total"),
             )
-            .join(Hubfile, HubfileViewRecord.file_id == Hubfile.id)
-            .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .group_by(FeatureModel.data_set_id)
+            .group_by(versions.c.dataset_id)
             .subquery()
         )
-        file_downloads = (
+        files = _files()
+        files_by_dataset = (
             db.session.query(
-                FeatureModel.data_set_id.label("dataset_id"),
-                func.count(HubfileDownloadRecord.id).label("file_downloads"),
+                files.c.dataset_id.label("dataset_id"),
+                func.count(files.c.file_id).label("files_total"),
             )
-            .join(Hubfile, HubfileDownloadRecord.file_id == Hubfile.id)
-            .join(FeatureModel, Hubfile.feature_model_id == FeatureModel.id)
-            .group_by(FeatureModel.data_set_id)
+            .group_by(files.c.dataset_id)
             .subquery()
         )
+        file_views = self._file_records_by_dataset(HubfileViewRecord, "file_views")
+        file_downloads = self._file_records_by_dataset(HubfileDownloadRecord, "file_downloads")
 
         dataset_views_count = func.coalesce(dataset_views.c.views, 0)
         dataset_downloads_count = func.coalesce(dataset_downloads.c.downloads, 0)
-        file_views_count = func.coalesce(file_views.c.file_views, 0)
-        file_downloads_count = func.coalesce(file_downloads.c.file_downloads, 0)
 
         return (
             db.session.query(
@@ -243,35 +277,40 @@ class MetricsRepository:
                 DSMetaData.title.label("title"),
                 DSMetaData.dataset_doi.label("dataset_doi"),
                 BaseDataset.created_at.label("created_at"),
-                func.count(func.distinct(FeatureModel.id)).label("versions_total"),
-                func.count(func.distinct(Hubfile.id)).label("files_total"),
+                func.coalesce(versions_by_dataset.c.versions_total, 0).label("versions_total"),
+                func.coalesce(files_by_dataset.c.files_total, 0).label("files_total"),
                 dataset_views_count.label("workflow_views"),
                 dataset_downloads_count.label("workflow_downloads"),
-                file_views_count.label("file_views"),
-                file_downloads_count.label("file_downloads"),
+                func.coalesce(file_views.c.file_views, 0).label("file_views"),
+                func.coalesce(file_downloads.c.file_downloads, 0).label("file_downloads"),
             )
             .join(DSMetaData, BaseDataset.ds_meta_data_id == DSMetaData.id)
-            .outerjoin(FeatureModel, FeatureModel.data_set_id == BaseDataset.id)
-            .outerjoin(Hubfile, Hubfile.feature_model_id == FeatureModel.id)
+            .outerjoin(versions_by_dataset, versions_by_dataset.c.dataset_id == BaseDataset.id)
+            .outerjoin(files_by_dataset, files_by_dataset.c.dataset_id == BaseDataset.id)
             .outerjoin(dataset_views, dataset_views.c.dataset_id == BaseDataset.id)
             .outerjoin(dataset_downloads, dataset_downloads.c.dataset_id == BaseDataset.id)
             .outerjoin(file_views, file_views.c.dataset_id == BaseDataset.id)
             .outerjoin(file_downloads, file_downloads.c.dataset_id == BaseDataset.id)
             .filter(BaseDataset.user_id == owner_id)
-            .group_by(
-                BaseDataset.id,
-                DSMetaData.title,
-                DSMetaData.dataset_doi,
-                BaseDataset.created_at,
-                dataset_views.c.views,
-                dataset_downloads.c.downloads,
-                file_views.c.file_views,
-                file_downloads.c.file_downloads,
-            )
             .order_by(
                 desc(dataset_downloads_count),
                 desc(dataset_views_count),
                 DSMetaData.title.asc(),
             )
             .all()
+        )
+
+    @staticmethod
+    def _file_records_by_dataset(record_model, label: str):
+        """Count of *record_model* rows per dataset that owns the file."""
+        files = _files()
+        return (
+            db.session.query(
+                files.c.dataset_id.label("dataset_id"),
+                func.count(record_model.id).label(label),
+            )
+            .select_from(record_model)
+            .join(files, record_model.file_id == files.c.file_id)
+            .group_by(files.c.dataset_id)
+            .subquery()
         )

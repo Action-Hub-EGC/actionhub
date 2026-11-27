@@ -181,6 +181,8 @@ file_view_record.file_id      → file.id → feature_model.id → data_set.id
 
 y se filtra por `data_set.user_id = :owner_id`.
 
+Desde #12 un archivo también puede colgar de un workflow: `file.workflow_version_id → workflow_version.workflow_dataset_id → data_set.id`. La restricción `ck_file_one_version` garantiza que cada archivo sigue exactamente uno de los dos caminos, así que las métricas suman ambos sin contar dos veces (#91).
+
 **Nunca** se filtra `record.user_id = :owner_id`: eso contaría las descargas que el propietario hace de otros workflows y perdería las visitas anónimas a los suyos.
 
 ### 6.2. Zonas horarias
@@ -266,8 +268,8 @@ Todas se calculan para un `owner_id` y suman borradores y publicados, salvo dond
 | `workflows_total` | Workflows del propietario | `COUNT(data_set)` |
 | `published_total` | Workflows con DOI | `COUNT(data_set JOIN ds_meta_data WHERE dataset_doi IS NOT NULL)` |
 | `draft_total` | Workflows sin DOI | `workflows_total - published_total` |
-| `versions_total` | Versiones de sus workflows | `COUNT(feature_model JOIN data_set)` |
-| `files_total` | Archivos de sus versiones | `COUNT(file JOIN feature_model JOIN data_set)` |
+| `versions_total` | Versiones de sus workflows | `COUNT(feature_model JOIN data_set)` + `COUNT(workflow_version JOIN data_set)` |
+| `files_total` | Archivos de sus versiones | `COUNT(file JOIN feature_model JOIN data_set)` + `COUNT(file JOIN workflow_version JOIN data_set)` |
 | `size_total_bytes` | Tamaño agregado de sus archivos | `SUM(file.size)` |
 
 ### 7.2. Actividad
@@ -276,11 +278,13 @@ Todas se calculan para un `owner_id` y suman borradores y publicados, salvo dond
 | --- | --- | --- |
 | `workflow_views` | Visitas a sus fichas | `COUNT(ds_view_record JOIN data_set)` |
 | `workflow_downloads` | Descargas de sus paquetes | `COUNT(ds_download_record JOIN data_set)` |
-| `file_views` | Vistas de sus archivos | `COUNT(file_view_record JOIN file JOIN feature_model JOIN data_set)` |
-| `file_downloads` | Descargas de sus archivos | `COUNT(file_download_record JOIN file JOIN feature_model JOIN data_set)` |
+| `file_views` | Vistas de sus archivos | `COUNT(file_view_record JOIN file JOIN (feature_model o workflow_version) JOIN data_set)` |
+| `file_downloads` | Descargas de sus archivos | `COUNT(file_download_record JOIN file JOIN (feature_model o workflow_version) JOIN data_set)` |
 | `unique_visitors` | Cookies distintas que han visto alguno de sus workflows | `COUNT(DISTINCT ds_view_record.view_cookie)` |
 | `download_rate` | Descargas por visita | `workflow_downloads / workflow_views`, `NULL` si no hay visitas |
 | `last_activity_at` | Última visita o descarga, de cualquier tipo | `MAX` de las cuatro fechas |
+
+`versions_total` cuenta las versiones de contenido de cada tipo: `FeatureModel` en UVL y `WorkflowVersion` en workflow (#91). No cuenta filas de `dataset_version` (#36): en UVL una versión del dataset agrupa varios `FeatureModel`, y cambiar ahora la definición alteraría el número de los datasets UVL existentes.
 
 `unique_visitors` cuenta navegadores, no personas. Se etiqueta como “visitantes únicos (por navegador)” en la interfaz.
 

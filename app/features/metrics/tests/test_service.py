@@ -16,6 +16,7 @@ from app.features.featuremodel.models import FeatureModel
 from app.features.hubfile.models import Hubfile, HubfileDownloadRecord, HubfileViewRecord
 from app.features.metrics.services import MetricsService
 from app.features.profile.services import UserProfileService
+from app.features.workflow.models import WorkflowDataset, WorkflowVersion
 
 pytestmark = pytest.mark.service
 
@@ -47,6 +48,39 @@ def make_version(dataset_id, file_sizes):
     db.session.flush()
     files = [
         Hubfile(name=f"file-{index}.yml", checksum=f"sum-{index}", size=size, feature_model_id=version.id)
+        for index, size in enumerate(file_sizes)
+    ]
+    db.session.add_all(files)
+    db.session.commit()
+    return version, files
+
+
+def make_workflow(owner_id, title, *, doi=None, created_at=BASE_TIME):
+    meta = DSMetaData(
+        title=title,
+        description=f"Description for {title}",
+        publication_type=PublicationType.NONE,
+        dataset_doi=doi,
+    )
+    db.session.add(meta)
+    db.session.flush()
+    workflow = WorkflowDataset(user_id=owner_id, ds_meta_data_id=meta.id, manifest_json="{}", created_at=created_at)
+    db.session.add(workflow)
+    db.session.commit()
+    return workflow
+
+
+def make_workflow_version(workflow_id, file_sizes):
+    version = WorkflowVersion(
+        workflow_dataset_id=workflow_id,
+        manifest_json="{}",
+        workflow_yaml="name: demo\non: push\njobs: {}\n",
+        created_at=BASE_TIME,
+    )
+    db.session.add(version)
+    db.session.flush()
+    files = [
+        Hubfile(name=f"wf-{index}.yml", checksum=f"wf-sum-{index}", size=size, workflow_version_id=version.id)
         for index, size in enumerate(file_sizes)
     ]
     db.session.add_all(files)
@@ -199,3 +233,72 @@ def test_summary_for_user_keeps_its_contract_and_adds_metrics(test_app, test_cli
         assert summary["metrics"]["workflows_total"] == 2
         assert summary["metrics"]["published_total"] == 1
         assert summary["metrics"]["draft_total"] == 1
+
+
+def test_owner_summary_counts_workflow_versions_and_files(test_app, test_client):
+    with test_app.app_context():
+        owner = make_user("metrics-workflow@example.com")
+        stranger = make_user("metrics-workflow-stranger@example.com")
+
+        workflow = make_workflow(owner.id, "ci", doi="10.5281/zenodo.10")
+        _, files = make_workflow_version(workflow.id, [120])
+        foreign = make_workflow(stranger.id, "foreign")
+        _, foreign_files = make_workflow_version(foreign.id, [999])
+
+        add_file_view(files[0].id, "cookie-a", datetime(2024, 4, 1, 9), user_id=stranger.id)
+        add_file_download(files[0].id, "cookie-a", datetime(2024, 4, 2, 9))
+        add_file_view(foreign_files[0].id, "cookie-a", datetime(2024, 5, 1, 9))
+        add_file_download(foreign_files[0].id, "cookie-a", datetime(2024, 5, 1, 9))
+        db.session.commit()
+
+        metrics = MetricsService().owner_summary(owner.id)
+
+        assert metrics["workflows_total"] == 1
+        assert metrics["versions_total"] == 1
+        assert metrics["files_total"] == 1
+        assert metrics["size_total_bytes"] == 120
+        assert metrics["file_views"] == 1
+        assert metrics["file_downloads"] == 1
+        assert metrics["last_activity_at"] == datetime(2024, 4, 2, 9, tzinfo=timezone.utc)
+
+        [row] = MetricsService().workflows_for_owner(owner.id)
+        assert row["title"] == "ci"
+        assert row["versions_total"] == 1
+        assert row["files_total"] == 1
+        assert row["file_views"] == 1
+        assert row["file_downloads"] == 1
+
+
+def test_owner_summary_adds_uvl_and_workflow_without_double_counting(test_app, test_client):
+    with test_app.app_context():
+        owner = make_user("metrics-mixed@example.com")
+
+        uvl = make_dataset(owner.id, "uvl", doi="10.5281/zenodo.11")
+        _, uvl_files = make_version(uvl.id, [100, 200])
+        workflow = make_workflow(owner.id, "workflow")
+        _, workflow_files = make_workflow_version(workflow.id, [10, 20, 30])
+        make_workflow_version(workflow.id, [5])
+
+        add_file_view(uvl_files[0].id, "cookie-a", datetime(2024, 6, 1, 9))
+        add_file_view(workflow_files[0].id, "cookie-a", datetime(2024, 6, 1, 10))
+        add_file_view(workflow_files[1].id, "cookie-b", datetime(2024, 6, 1, 11))
+        add_file_download(uvl_files[1].id, "cookie-a", datetime(2024, 6, 2, 9))
+        add_file_download(workflow_files[2].id, "cookie-a", datetime(2024, 6, 3, 9))
+        db.session.commit()
+
+        metrics = MetricsService().owner_summary(owner.id)
+
+        assert metrics["workflows_total"] == 2
+        assert metrics["published_total"] == 1
+        assert metrics["versions_total"] == 3
+        assert metrics["files_total"] == 6
+        assert metrics["size_total_bytes"] == 365
+        assert metrics["file_views"] == 3
+        assert metrics["file_downloads"] == 2
+        assert metrics["last_activity_at"] == datetime(2024, 6, 3, 9, tzinfo=timezone.utc)
+
+        rows = {row["title"]: row for row in MetricsService().workflows_for_owner(owner.id)}
+        assert (rows["uvl"]["versions_total"], rows["uvl"]["files_total"]) == (1, 2)
+        assert (rows["uvl"]["file_views"], rows["uvl"]["file_downloads"]) == (1, 1)
+        assert (rows["workflow"]["versions_total"], rows["workflow"]["files_total"]) == (2, 4)
+        assert (rows["workflow"]["file_views"], rows["workflow"]["file_downloads"]) == (2, 1)
