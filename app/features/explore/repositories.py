@@ -5,7 +5,8 @@ import unidecode
 from splent_framework.repositories.BaseRepository import BaseRepository
 from sqlalchemy import or_
 
-from app.features.dataset.models import Author, BaseDataset, DSMetaData, PublicationType
+from app.features.dataset.models import Author, BaseDataset, DSMetaData, DSMetrics, PublicationType
+from app.features.explore.filters import filters_for
 from app.features.featuremodel.models import FeatureModel, FMMetaData
 from app.features.workflow.models import WorkflowVersion
 
@@ -62,6 +63,7 @@ class ExploreRepository(BaseRepository):
         datasets = (
             self.model.query.join(DSMetaData, BaseDataset.ds_meta_data_id == DSMetaData.id)
             .outerjoin(Author, Author.ds_meta_data_id == DSMetaData.id)
+            .outerjoin(DSMetrics, DSMetaData.ds_metrics_id == DSMetrics.id)
             .outerjoin(FeatureModel, FeatureModel.data_set_id == BaseDataset.id)
             .outerjoin(FMMetaData, FeatureModel.fm_meta_data_id == FMMetaData.id)
             .outerjoin(WorkflowVersion, WorkflowVersion.workflow_dataset_id == BaseDataset.id)
@@ -75,6 +77,14 @@ class ExploreRepository(BaseRepository):
         dataset_type = str(dataset_type or "any").lower()
         if dataset_type in DATASET_TYPES:
             datasets = datasets.filter(BaseDataset.type == dataset_type)
+
+        # Filters registered by each dataset feature (#52). An empty value
+        # leaves the query untouched; an unknown/invalid value is ignored by
+        # that filter's own apply function.
+        for registered_filter in filters_for(dataset_type):
+            value = kwargs.get(registered_filter.name)
+            if value not in (None, "") and registered_filter.apply is not None:
+                datasets = registered_filter.apply(datasets, value)
 
         if publication_type != "any":
             matching_type = None

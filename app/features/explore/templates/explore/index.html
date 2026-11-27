@@ -134,6 +134,31 @@
                             </div>
                         </div>
 
+                        {% for registered in explore_filters %}
+                        <div class="col-lg-6">
+                            <div class="mb-3">
+                                <label class="form-label" for="filter_{{ registered.name }}">{{ registered.label }}</label>
+                                {% if registered.kind == 'select' %}
+                                <select class="form-control" id="filter_{{ registered.name }}"
+                                        data-explore-filter="{{ registered.name }}">
+                                    <option value="">Any</option>
+                                    {% for value, text in registered.options %}
+                                    <option value="{{ value }}">{{ text }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% elif registered.kind == 'number' %}
+                                <input class="form-control" id="filter_{{ registered.name }}" type="number" min="0"
+                                       data-explore-filter="{{ registered.name }}"
+                                       placeholder="{{ registered.placeholder or 'Any' }}">
+                                {% else %}
+                                <input class="form-control" id="filter_{{ registered.name }}" type="text"
+                                       data-explore-filter="{{ registered.name }}"
+                                       placeholder="{{ registered.placeholder or 'Any' }}">
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+
                     </div>
 
                     <div class="row">

@@ -1,6 +1,7 @@
 from flask import jsonify, render_template, request
 
 from app.features.explore import explore_bp
+from app.features.explore.filters import filters_for
 from app.features.explore.forms import ExploreForm
 from app.features.explore.services import ExploreService
 from app.features.metrics.services import DatasetCounterService
@@ -20,6 +21,7 @@ def index():
         end_date=request.args.get("end_date", ""),
         tags=request.args.get("tags", ""),
         dataset_type=request.args.get("dataset_type", "any"),
+        explore_filters=filters_for(None),
     )
 
 

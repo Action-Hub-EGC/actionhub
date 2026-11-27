@@ -32,6 +32,14 @@ function send_query() {
         ['input', 'change'].forEach(eventType => filter.addEventListener(eventType, () => {
             const csrfToken = document.getElementById('csrf_token').value;
 
+            const typeFilters = {};
+            document.querySelectorAll('[data-explore-filter]').forEach(input => {
+                const value = input.value.trim();
+                if (value !== '') {
+                    typeFilters[input.dataset.exploreFilter] = value;
+                }
+            });
+
             const searchCriteria = {
                 csrf_token: csrfToken,
                 query: document.querySelector('#query').value,
@@ -45,6 +53,7 @@ function send_query() {
                 publication_type: document.querySelector('#publication_type').value,
                 dataset_type: document.querySelector('#dataset_type').value,
                 sorting: document.querySelector('[name="sorting"]:checked').value,
+                ...typeFilters,
             };
 
             sync_url(searchCriteria);
@@ -206,6 +215,15 @@ function sync_url(searchCriteria) {
     if (searchCriteria.sorting && searchCriteria.sorting !== 'newest') {
         params.set('sorting', searchCriteria.sorting);
     }
+    const known = new Set([
+        'csrf_token', 'query', 'author', 'start_date', 'end_date', 'tags',
+        'publication_type', 'dataset_type', 'sorting',
+    ]);
+    Object.entries(searchCriteria).forEach(([key, value]) => {
+        if (!known.has(key) && value !== '' && value !== null && value !== undefined) {
+            params.set(key, value);
+        }
+    });
     const queryString = params.toString();
     window.history.replaceState({}, '', queryString ? `/explore?${queryString}` : '/explore');
 }
@@ -260,6 +278,9 @@ function clearFilters() {
     let publicationTypeSelect = document.querySelector('#publication_type');
     publicationTypeSelect.value = "any"; // replace "any" with whatever your default value is
     document.querySelector('#dataset_type').value = "any";
+    document.querySelectorAll('[data-explore-filter]').forEach(input => {
+        input.value = '';
+    });
     // publicationTypeSelect.dispatchEvent(new Event('input', {bubbles: true}));
 
     // Reset the sorting option
@@ -308,6 +329,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (datasetTypeParam) {
         document.getElementById('dataset_type').value = datasetTypeParam;
     }
+    document.querySelectorAll('[data-explore-filter]').forEach(input => {
+        const value = urlParams.get(input.dataset.exploreFilter);
+        if (value !== null) {
+            input.value = value;
+        }
+    });
     if (sortingParam === 'oldest') {
         document.querySelector('[name="sorting"][value="oldest"]').checked = true;
         document.querySelector('[name="sorting"][value="newest"]').checked = false;
