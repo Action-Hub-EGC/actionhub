@@ -92,14 +92,14 @@ resumen:
 | Capa | Estado | Qué cubre |
 | --- | --- | --- |
 | L1 | Implementada y bloqueante | Sintaxis y estructura del workflow. |
-| L2 | Implementada y bloqueante | Esquema del manifiesto y del workflow. |
-| L3 | Planificada (#18) | Comprobaciones estáticas adicionales. |
+| L2 | Implementada y bloqueante | Esquema de GitHub Actions del workflow. El manifiesto `actionhub.yaml` lo valida `PackageValidator` al subir el paquete. |
+| L3 | Fuera de alcance (#2) | `actionlint` y el análisis estático adicional no entran en M3. |
 | L4 | Planificada (#18) | Reglas de seguridad y calificación A–F. |
 
 Hoy un workflow pasa a `validated` solo después de L1 y L2. La calificación
 A–F se guarda en `WorkflowDataset.grade` cuando L4 la calcule; la página común
-ya muestra la insignia si existe. La documentación no presenta L3/L4 como
-terminadas.
+ya muestra la insignia si existe. La documentación no presenta L3 como
+planificada ni L4 como terminada.
 
 ## 6. `flamapy` se mantiene para UVL
 
