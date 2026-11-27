@@ -123,3 +123,14 @@ def test_file_cannot_belong_to_both_version_types(test_app, test_client):
         with pytest.raises((IntegrityError, OperationalError)):
             db.session.commit()
         db.session.rollback()
+
+
+def test_file_must_belong_to_one_version_type(test_app, test_client):
+    with test_app.app_context():
+        db.session.add(Hubfile(name="orphan.yaml", checksum="abc", size=1))
+
+        # MariaDB reports a CHECK violation as error 4025, which PyMySQL maps
+        # to OperationalError rather than IntegrityError.
+        with pytest.raises((IntegrityError, OperationalError), match="ck_file_one_version"):
+            db.session.commit()
+        db.session.rollback()
