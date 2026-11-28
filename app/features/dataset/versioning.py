@@ -220,8 +220,9 @@ class NewVersionService:
             raise VersionError("La versión no tiene archivos que publicar.")
         if sorted(file.checksum for file in files) == sorted(file.checksum for file in previous.files()):
             raise VersionError("La versión nueva no cambia ningún archivo respecto a la anterior.")
+        security_report = None
         if version.workflow_version is not None:
-            self._validate_workflow(version)
+            security_report = self._validate_workflow(version)
 
         try:
             if not version.deposition_id:
@@ -256,12 +257,9 @@ class NewVersionService:
         metadata.conceptrecid = metadata.conceptrecid or published.get("conceptrecid")
         metadata.concept_doi = metadata.concept_doi or published.get("conceptdoi")
         if version.workflow_version is not None:
-            from app.features.workflow.security import L4SecurityEvaluator
-
             dataset.manifest_json = version.workflow_version.manifest_json
-            report = L4SecurityEvaluator().evaluate_text(version.workflow_version.workflow_yaml)
-            dataset.grade = report.grade
-            dataset.security_score = report.score
+            dataset.grade = security_report.grade
+            dataset.security_score = security_report.score
         db.session.commit()
         logger.info("Dataset %s: v%s published with DOI %s", dataset.id, version.number, doi)
         return doi
@@ -414,7 +412,7 @@ class NewVersionService:
         if "workflow.yml" in files:
             content.workflow_yaml = files["workflow.yml"].decode("utf-8", errors="replace")
 
-    def _validate_workflow(self, version) -> None:
+    def _validate_workflow(self, version):
         """Re-run the package checks (structure, manifest, L1 + L2) on the draft.
 
         The draft is zipped and validated with the same ``PackageValidator`` as
@@ -423,6 +421,7 @@ class NewVersionService:
         ``version: 2.x.y``.
         """
         from app.features.workflow.package import PackageIssue, PackageValidator
+        from app.features.workflow.security import L4SecurityEvaluator
         from app.features.workflow.services import WorkflowDatasetService
 
         buffer = io.BytesIO()
@@ -452,6 +451,7 @@ class NewVersionService:
         # Only the draft's own rows change here. The dataset's grade still
         # describes the published version until the new one is published.
         db.session.flush()
+        return L4SecurityEvaluator().evaluate_text(result.workflow_yaml)
 
     def _mirror_files(self, deposition_id: int, files) -> None:
         """Make the Zenodo draft hold exactly the version's files.

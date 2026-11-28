@@ -126,7 +126,7 @@ class WorkflowDatasetService(BaseService):
                     )
                 )
 
-                        security = L4SecurityEvaluator().evaluate_text(result.workflow_yaml)
+            security = L4SecurityEvaluator().evaluate_text(result.workflow_yaml)
             manifest_json = json.dumps(manifest, ensure_ascii=False, sort_keys=True)
             columns = {
                 "validation_status": ValidationStatus.VALIDATED,
