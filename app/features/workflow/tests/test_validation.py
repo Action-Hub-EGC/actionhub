@@ -1,6 +1,7 @@
 """L1 and L2 validation tests (#15, #16)."""
 
 import io
+import json
 import zipfile
 from types import SimpleNamespace
 
@@ -268,3 +269,65 @@ def test_invalid_version_blocks_validated_status_on_l2(test_app, test_client):
         assert result.valid is False
         assert dataset.validation_status == ValidationStatus.FAILED
         assert dataset.validation_status != ValidationStatus.VALIDATED
+
+
+def test_service_text_validators_expose_l1_and_l2():
+    service = WorkflowDatasetService()
+
+    assert service.validate_l1_text(VALID_YAML).valid is True
+    assert service.validate_l2_text(VALID_YAML).valid is True
+    assert service.validate_l2_text(INVALID_JOB_YAML).valid is False
+
+
+def test_unreadable_files_return_spanish_error_in_l1_and_l2(tmp_path):
+    missing = tmp_path / "does-not-exist.yml"
+
+    l1_result = L1Validator().validate_file(missing)
+    l2_result = L2Validator().validate_file(missing)
+
+    assert l1_result.valid is False
+    assert "No se pudo leer el archivo" in l1_result.issues[0].message
+    assert l2_result.valid is False
+    assert "No se pudo leer el archivo" in l2_result.issues[0].message
+
+
+def test_l2_translates_additional_properties_enum_and_min_items(tmp_path):
+    extra_prop = (
+        "name: Extra prop\n"
+        "on: push\n"
+        "unknown_root_key: true\n"
+        "jobs:\n"
+        "  build:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: echo hi\n"
+    )
+    extra_result = L2Validator().validate_text(extra_prop)
+    assert extra_result.valid is False
+    assert any("no se permiten propiedades adicionales" in issue.message for issue in extra_result.issues)
+
+    schema_file = tmp_path / "mini.schema.json"
+    schema_file.write_text(
+        json.dumps(
+            {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "type": "object",
+                "properties": {
+                    "mode": {"enum": ["fast", "safe"]},
+                    "items": {"type": "array", "minItems": 2},
+                    "value": {"type": ["integer", "string"]},
+                    "label": {"type": "string", "minLength": 5},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    validator = L2Validator(schema_path=schema_file)
+    result = validator.validate_data({"mode": "invalid", "items": ["one"], "value": True, "label": "ab"})
+
+    assert result.valid is False
+    messages = [issue.message for issue in result.issues]
+    assert any("valor no permitido" in message for message in messages)
+    assert any("al menos 2 elemento" in message for message in messages)
+    assert any("se esperaba uno de" in message for message in messages)
+    assert any("is too short" in message for message in messages)

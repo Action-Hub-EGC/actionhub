@@ -290,3 +290,22 @@ def test_anonymous_visitors_are_sent_to_login(test_client, uploads, fakenodo):
 
     assert response.status_code == 302
     assert "login" in response.headers["Location"]
+
+
+def test_publish_without_doi_from_zenodo_raises_and_stays_validated(
+    test_app, test_client, uploads, fakenodo, monkeypatch
+):
+    with test_app.app_context():
+        owner = UserRepository().create(email="lifecycle-nodoi@example.com", password="secret")
+        workflow = upload_workflow(owner)
+        monkeypatch.setattr(
+            "app.features.zenodo.services.ZenodoService.get_deposition",
+            lambda self, deposition_id: {"id": deposition_id, "state": "done"},
+        )
+
+        with pytest.raises(PublicationError, match="sin DOI"):
+            WorkflowPublicationService().publish(workflow)
+
+        stored = db.session.get(WorkflowDataset, workflow.id)
+        assert stored.validation_status == VALIDATED
+        assert stored.ds_meta_data.dataset_doi is None

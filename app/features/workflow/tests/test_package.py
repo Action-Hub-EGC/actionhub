@@ -2,6 +2,7 @@
 
 import io
 import os
+import stat
 import zipfile
 from types import SimpleNamespace
 
@@ -186,3 +187,100 @@ def test_unexpected_persistence_error_hides_internal_details(test_app, test_clie
         assert issues[0].message == "No se pudo guardar el paquete. Revisa los datos e inténtalo de nuevo."
         assert "disk full" not in issues[0].message
         assert WorkflowDataset.query.count() == before
+
+
+def test_empty_and_corrupt_zip_packages_are_rejected():
+    empty_result = PackageValidator().validate_zip(b"")
+    corrupt_result = PackageValidator().validate_zip(b"not-a-zip")
+
+    assert empty_result.valid is False
+    assert any("vacío" in issue.message for issue in empty_result.issues)
+    assert corrupt_result.valid is False
+    assert any("ZIP válido" in issue.message for issue in corrupt_result.issues)
+
+
+def test_package_size_and_file_count_limits_are_enforced(monkeypatch):
+    data = make_zip()
+
+    monkeypatch.setattr("app.features.workflow.package.MAX_PACKAGE_BYTES", 10)
+    too_big = PackageValidator().validate_zip(data)
+    assert too_big.valid is False
+    assert any("supera el límite" in issue.message for issue in too_big.issues)
+
+    monkeypatch.setattr("app.features.workflow.package.MAX_PACKAGE_BYTES", 10 * 1024 * 1024)
+    monkeypatch.setattr("app.features.workflow.package.MAX_FILES", 2)
+    too_many = PackageValidator().validate_zip(data)
+    assert too_many.valid is False
+    assert any("límite de 2 archivos" in issue.message for issue in too_many.issues)
+
+    monkeypatch.setattr("app.features.workflow.package.MAX_FILES", 100)
+    monkeypatch.setattr("app.features.workflow.package.MAX_UNCOMPRESSED_BYTES", 10)
+    too_uncompressed = PackageValidator().validate_zip(data)
+    assert too_uncompressed.valid is False
+    assert any("descomprimido" in issue.message for issue in too_uncompressed.issues)
+
+
+def test_common_root_folder_and_macos_metadata_are_stripped():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("demo-bundle/actionhub.yaml", MANIFEST)
+        archive.writestr("demo-bundle/workflow.yml", WORKFLOW)
+        archive.writestr("demo-bundle/README.md", "# Demo\n")
+        archive.writestr("demo-bundle/LICENSE", "MIT\n")
+        archive.writestr("demo-bundle/.DS_Store", "junk")
+        archive.writestr("demo-bundle/__MACOSX/._README.md", "junk")
+
+    result = PackageValidator().validate_zip(buffer.getvalue())
+
+    assert result.valid is True
+    assert set(result.files) == {"actionhub.yaml", "workflow.yml", "README.md", "LICENSE"}
+
+
+def test_duplicate_entries_and_symlinks_in_zip_are_rejected():
+    dup_buffer = io.BytesIO()
+    with zipfile.ZipFile(dup_buffer, "w") as archive:
+        archive.writestr("actionhub.yaml", MANIFEST)
+        archive.writestr("workflow.yml", WORKFLOW)
+        archive.writestr("README.md", "# First\n")
+        archive.writestr("README.md", "# Duplicate\n")
+        archive.writestr("LICENSE", "MIT\n")
+
+    dup_result = PackageValidator().validate_zip(dup_buffer.getvalue())
+    assert dup_result.valid is False
+    assert any("duplicado" in issue.message for issue in dup_result.issues)
+
+    symlink_buffer = io.BytesIO()
+    with zipfile.ZipFile(symlink_buffer, "w") as archive:
+        archive.writestr("actionhub.yaml", MANIFEST)
+        archive.writestr("workflow.yml", WORKFLOW)
+        archive.writestr("README.md", "# Demo\n")
+        archive.writestr("LICENSE", "MIT\n")
+        info = zipfile.ZipInfo("fixtures/link.txt")
+        info.external_attr = (stat.S_IFLNK | 0o777) << 16
+        archive.writestr(info, "/etc/passwd")
+
+    symlink_result = PackageValidator().validate_zip(symlink_buffer.getvalue())
+    assert symlink_result.valid is False
+    assert any("enlaces simbólicos" in issue.message for issue in symlink_result.issues)
+
+
+def test_invalid_text_and_manifest_encodings_or_structures_are_rejected():
+    empty_readme = PackageValidator().validate_zip(make_zip({"README.md": "   \n"}))
+    assert empty_readme.valid is False
+    assert any(issue.file == "README.md" and "vacío" in issue.message for issue in empty_readme.issues)
+
+    non_utf8_readme = PackageValidator().validate_zip(make_zip({"README.md": b"\xff\xfe"}))
+    assert non_utf8_readme.valid is False
+    assert any(issue.file == "README.md" and "UTF-8" in issue.message for issue in non_utf8_readme.issues)
+
+    non_utf8_manifest = PackageValidator().validate_zip(make_zip(manifest=b"\xff\xfe"))
+    assert non_utf8_manifest.valid is False
+    assert any(issue.file == "actionhub.yaml" and "UTF-8" in issue.message for issue in non_utf8_manifest.issues)
+
+    dup_manifest = PackageValidator().validate_zip(make_zip(manifest="name: a\nname: b\n"))
+    assert dup_manifest.valid is False
+    assert any(issue.file == "actionhub.yaml" and "Clave duplicada" in issue.message for issue in dup_manifest.issues)
+
+    list_manifest = PackageValidator().validate_zip(make_zip(manifest="- not\n- a-mapping\n"))
+    assert list_manifest.valid is False
+    assert any(issue.file == "actionhub.yaml" and "objeto YAML" in issue.message for issue in list_manifest.issues)

@@ -100,6 +100,7 @@ def test_workflow_versions_and_files_are_aggregated(test_app, test_client):
             payload = loaded.to_dict()
         assert payload["files_count"] == 1
         assert payload["files"][0]["name"] == "actionhub.yaml"
+        assert repr(version) == f"WorkflowVersion<{version.id}>"
 
 
 def test_file_cannot_belong_to_both_version_types(test_app, test_client):
