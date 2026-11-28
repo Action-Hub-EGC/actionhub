@@ -6,10 +6,11 @@ layout users upload. The seeder zips it, runs it through
 the same path as an upload, so every seed has version 1, a ``WorkflowVersion``
 with ``metadata_json`` and real ``Hubfile`` rows under the version folder.
 
-L4 grading (#18) does not exist yet, so the grade and score are set here and
-each example's content is written to deserve its grade: A pins actions by SHA
-and grants minimal permissions; F uses ``pull_request_target`` with the PR
-code, ``write-all`` and echoes secrets.
+Each example's ``workflow.yml`` is written so that the L4 rules of #18
+(SEC-01 to SEC-04) give it exactly its grade: A pins every action by SHA and
+declares permissions (100); F leaves actions on ``@master``, uses
+``write-all`` and checks out the PR head on ``pull_request_target`` (35).
+Until #18 is in ``trunk``, the grade and score are set here with those values.
 """
 
 import io
@@ -40,12 +41,12 @@ class SeedWorkflow:
 
 
 SEED_WORKFLOWS = (
-    SeedWorkflow("secure-node-ci", "A", 96, "user1@example.com", True),
-    SeedWorkflow("python-test-matrix", "B", 84, "user2@example.com", True),
-    SeedWorkflow("docker-image-publish", "C", 71, "user1@example.com", True),
-    SeedWorkflow("nightly-dependency-update", "D", 55, "user2@example.com", False),
-    SeedWorkflow("issue-label-bot", "E", 38, "user1@example.com", False),
-    SeedWorkflow("pr-preview-deploy", "F", 9, "user2@example.com", True),
+    SeedWorkflow("secure-node-ci", "A", 100, "user1@example.com", True),
+    SeedWorkflow("python-test-matrix", "B", 85, "user2@example.com", True),
+    SeedWorkflow("docker-image-publish", "C", 70, "user1@example.com", True),
+    SeedWorkflow("nightly-dependency-update", "D", 60, "user2@example.com", False),
+    SeedWorkflow("issue-label-bot", "E", 55, "user1@example.com", False),
+    SeedWorkflow("pr-preview-deploy", "F", 35, "user2@example.com", True),
 )
 
 

@@ -148,14 +148,14 @@ La página pública del DOI (`/doi/<doi>/`) de un workflow enlaza a esta descarg
 
 | Paquete | Nota | Puntuación | Estado | Por qué |
 |---|---|---|---|---|
-| `secure-node-ci` | A | 96 | publicado (`10.1234/workflow1`) | Acciones fijadas por SHA, `contents: read`, `timeout-minutes`, `persist-credentials: false` |
-| `python-test-matrix` | B | 84 | publicado (`10.1234/workflow2`) | Permisos de lectura y timeouts, pero acciones fijadas por etiqueta |
-| `docker-image-publish` | C | 71 | publicado (`10.1234/workflow3`) | Permisos acotados, acciones de terceros por etiqueta, sin timeouts |
-| `nightly-dependency-update` | D | 55 | borrador (`validated`) | Sin `permissions`, token personal, `npx` sin versión |
-| `issue-label-bot` | E | 38 | borrador (`validated`) | Inyección de `github.event.issue.*` en `run`, acciones en `@main` |
-| `pr-preview-deploy` | F | 9 | publicado (`10.1234/workflow6`) | `pull_request_target` con checkout de la PR, `write-all`, `@master`, secretos con `echo`, `curl \| bash` |
+| `secure-node-ci` | A | 100 | publicado (`10.1234/workflow1`) | Todas las acciones fijadas por SHA y `permissions` mínimos: ninguna penalización |
+| `python-test-matrix` | B | 85 | publicado (`10.1234/workflow2`) | `setup-python` por etiqueta (SEC-01, -15) |
+| `docker-image-publish` | C | 70 | publicado (`10.1234/workflow3`) | `login-action` y `build-push-action` por etiqueta (SEC-01, -30) |
+| `nightly-dependency-update` | D | 60 | borrador (`validated`) | Dos acciones por etiqueta (SEC-01, -30) y sin `permissions` (SEC-02, -10) |
+| `issue-label-bot` | E | 55 | borrador (`validated`) | Tres acciones sin fijar, dos en `@main` (SEC-01, -45 con el tope) |
+| `pr-preview-deploy` | F | 35 | publicado (`10.1234/workflow6`) | Dos acciones en `@master` (SEC-01, -30), `write-all` (SEC-03, -10) y `pull_request_target` con checkout del head (SEC-04, -25) |
 
-Mientras no exista la calificación L4 (#18), la nota y la puntuación se fijan en el seeder. Los publicados tienen DOI falso sin deposition: no se llama a Zenodo ni a fakenodo. Si un paquete ya existe (mismo `name`), el seeder no lo vuelve a crear.
+La nota y la puntuación son las que dan las reglas L4 de #18 (SEC-01 a SEC-04) para cada `workflow.yml`. Mientras #18 no esté en `trunk`, el seeder las fija con esos mismos valores. Los publicados tienen DOI falso sin deposition: no se llama a Zenodo ni a fakenodo. Si un paquete ya existe (mismo `name`), el seeder no lo vuelve a crear.
 
 ## Errores habituales
 
