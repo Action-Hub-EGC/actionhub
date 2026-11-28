@@ -35,6 +35,9 @@
                     <span class="badge bg-secondary">{{ workflow.validation_status }}</span>
                     <span class="badge bg-light text-dark">{{ workflow.versions|length }} versiones</span>
                     <span class="badge bg-light text-dark">{{ workflow.get_files_count() }} archivos</span>
+                    {% if workflow.has_security_warning() %}
+                    <span class="badge bg-warning text-dark">Advertencia de seguridad</span>
+                    {% endif %}
                 </div>
 
                 <small class="text-muted">

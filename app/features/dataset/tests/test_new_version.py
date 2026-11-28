@@ -209,8 +209,8 @@ def test_workflow_new_version_is_revalidated_and_published(test_app, test_client
         assert "setup-python" in second.workflow_version.workflow_yaml
         assert second.workflow_version.workflow_metadata["actions"] == ["actions/setup-python@v5"]
         assert '"version": "2.0.0"' in workflow.manifest_json
-        # L4 (#18) does not exist yet: the grade of v1 must not describe v2.
-        assert workflow.grade is None and workflow.security_score is None
+        # L4 (#18) recalculates the grade from v2's YAML (unpinned action -15, no permissions -10).
+        assert (workflow.grade, workflow.security_score) == ("C", 75)
 
         assert "actions/checkout@v4" in first.workflow_version.workflow_yaml
         assert sorted(file.name for file in first.workflow_version.files) == sorted(
@@ -274,7 +274,7 @@ def test_failed_publication_keeps_the_draft_and_can_be_retried(test_app, test_cl
         doi = service.publish(draft)
         assert doi != first_doi
         assert len(fakenodo.store.list_versions(workflow.ds_meta_data.conceptrecid)) == 2
-        assert workflow.grade is None and workflow.security_score is None
+        assert (workflow.grade, workflow.security_score) == ("C", 75)
 
 
 def test_retry_recovers_the_doi_when_zenodo_published_but_did_not_answer(
@@ -325,7 +325,7 @@ def test_retry_recovers_the_doi_when_zenodo_published_but_did_not_answer(
         assert doi == remote["doi"]
         assert [method for method, _ in retry_calls] == ["GET"]
         assert workflow.ds_meta_data.dataset_doi == doi
-        assert workflow.grade is None
+        assert (workflow.grade, workflow.security_score) == ("C", 75)
 
 
 # ── Rules ───────────────────────────────────────────────────────────────

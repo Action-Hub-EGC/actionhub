@@ -256,13 +256,12 @@ class NewVersionService:
         metadata.conceptrecid = metadata.conceptrecid or published.get("conceptrecid")
         metadata.concept_doi = metadata.concept_doi or published.get("conceptdoi")
         if version.workflow_version is not None:
+            from app.features.workflow.security import L4SecurityEvaluator
+
             dataset.manifest_json = version.workflow_version.manifest_json
-            # L4 (#18) is not implemented yet. The grade of the previous
-            # version would describe another YAML, so it is cleared, but only
-            # once the new version is really the published one. When the L4
-            # grader exists, it is called here instead.
-            dataset.grade = None
-            dataset.security_score = None
+            report = L4SecurityEvaluator().evaluate_text(version.workflow_version.workflow_yaml)
+            dataset.grade = report.grade
+            dataset.security_score = report.score
         db.session.commit()
         logger.info("Dataset %s: v%s published with DOI %s", dataset.id, version.number, doi)
         return doi

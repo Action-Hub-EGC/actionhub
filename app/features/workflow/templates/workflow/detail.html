@@ -37,6 +37,15 @@
 {% endfor %}
 {% endwith %}
 
+{% if workflow.has_security_warning() %}
+<div class="alert alert-warning" role="alert" id="workflow-security-warning">
+    <strong>Advertencia de seguridad:</strong> este workflow tiene calificación
+    <strong>{{ workflow.grade }}</strong>
+    {% if workflow.security_score is not none %}({{ workflow.security_score }}/100){% endif %}.
+    Revisa las incidencias detectadas antes de descargarlo o ejecutarlo.
+</div>
+{% endif %}
+
 <div class="row">
     <div class="col-12 col-lg-8">
         <div class="card shadow-sm mb-3">
@@ -74,6 +83,32 @@
                 </dl>
             </div>
         </div>
+
+        {% if security_report %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Auditoría de seguridad (L4)</h5>
+                {% if security_report.findings %}
+                <ul class="list-group list-group-flush">
+                    {% for finding in security_report.findings %}
+                    <li class="list-group-item px-0 d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <span class="badge bg-warning text-dark me-1">{{ finding.rule_id }}</span>
+                            {{ finding.message }}
+                            {% if finding.location %}
+                            <div class="small text-secondary"><code>{{ finding.location }}</code></div>
+                            {% endif %}
+                        </div>
+                        <span class="badge bg-danger">-{{ finding.penalty }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-success mb-0">Sin incidencias detectadas en las reglas SEC-01 a SEC-04.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
 
         <div class="card shadow-sm mb-3">
             <div class="card-body">

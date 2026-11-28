@@ -58,6 +58,10 @@ class WorkflowDataset(BaseDataset):
         latest = self.latest_version()
         return latest.workflow_metadata if latest else None
 
+    def has_security_warning(self) -> bool:
+        """Return True when the stored L4 grade is below C (D, E or F)."""
+        return self.grade in {"D", "E", "F"}
+
 
 class WorkflowVersion(db.Model):
     """One published version of a workflow package."""

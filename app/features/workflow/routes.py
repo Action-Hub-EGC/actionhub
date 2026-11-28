@@ -55,6 +55,7 @@ def detail(dataset_id):
             workflow=workflow,
             versions=workflow_service.versions_for(dataset_id),
             workflow_metadata=workflow.workflow_metadata(),
+            security_report=workflow_service.security_report_for(workflow),
             counts=counter_service.counts(dataset_id),
             publish_form=WorkflowPublishForm(),
         )
@@ -79,6 +80,12 @@ def publish(dataset_id):
     else:
         logger.info("Workflow %s published with DOI %s", dataset_id, doi)
         flash(f"Workflow publicado con DOI {doi}.", "success")
+        if workflow.has_security_warning():
+            flash(
+                f"Advertencia de seguridad: este workflow se ha publicado con calificación {workflow.grade} "
+                f"({workflow.security_score}/100).",
+                "warning",
+            )
     return redirect(url_for("workflow.detail", dataset_id=dataset_id))
 
 

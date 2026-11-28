@@ -95,8 +95,8 @@ resumen:
 | --- | --- | --- |
 | L1 | Implementada y bloqueante | Sintaxis y estructura del workflow. |
 | L2 | Implementada y bloqueante | Esquema del manifiesto y del workflow. |
-| L3 | Planificada (#18) | Comprobaciones estáticas adicionales. |
-| L4 | Planificada (#18) | Reglas de seguridad y calificación A–F. |
+| L3 | Extra opcional (no implementada) | Comprobaciones estáticas adicionales. |
+| L4 | Implementada (no bloqueante, #18) | Reglas de seguridad y calificación A–F. |
 
 Hoy un workflow pasa a `validated` solo después de L1 y L2. La calificación
 A–F se guarda en `WorkflowDataset.grade` cuando L4 la calcule; la página común

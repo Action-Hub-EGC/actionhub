@@ -1,8 +1,8 @@
 # Formato de paquete de workflow
 
-- **Issues:** #14 (formato y subida), #15 y #16 (validación L1 y L2), #17 (metadatos), #21 (descarga y datos de ejemplo).
+- **Issues:** #14 (formato y subida), #15 y #16 (validación L1 y L2), #17 (metadatos), #18 (reglas de seguridad L4 y nota A–F), #21 (descarga y datos de ejemplo).
 - **Formato:** un único archivo `.zip`.
-- **Estado:** implementado; validación L1 (sintaxis YAML), L2 (esquema oficial de GitHub Actions) y esquema del manifiesto.
+- **Estado:** implementado; validación L1 (sintaxis YAML), L2 (esquema oficial de GitHub Actions), validación L4 (reglas de seguridad) y esquema del manifiesto.
 
 ## Estructura
 
@@ -100,7 +100,7 @@ Desde #19, `WorkflowDataset.validation_status` sigue este ciclo (`app/features/w
 | `validated` | `published` | Al publicar con DOI |
 | `published` | — | Ninguna: un workflow publicado es inmutable. Una versión nueva es WI-196 |
 
-Cualquier otra transición (por ejemplo `draft` → `published`, o validar un workflow publicado) lanza `InvalidTransition` y no cambia nada. L4 (#18) añadirá su calificación de seguridad en el paso a `validated`.
+Cualquier otra transición (por ejemplo `draft` → `published`, o validar un workflow publicado) lanza `InvalidTransition` y no cambia nada. L4 (#18) ya está implementada y no bloquea el paso a `validated` ni a `published`.
 
 **Publicar.** El propietario pulsa «Publicar con DOI» en la ficha (`POST /workflow/<id>/publish`). `WorkflowPublicationService.publish`:
 
@@ -129,6 +129,27 @@ Desde #17, cada `WorkflowVersion` guarda en `workflow_version.metadata_json` (te
 
 **Dónde se muestran.** La ficha `/workflow/<id>` enseña los metadatos de la última versión (`WorkflowDataset.workflow_metadata()`, que usa `latest_version()`) en la tarjeta «Qué hace este workflow». Las versiones subidas antes de la migración `004` tienen `metadata_json = NULL` y la ficha lo indica.
 
+## Calificación de seguridad (L4)
+
+Desde #18, cada workflow que supera las capas bloqueantes L1 y L2 se evalúa con el motor L4 (`app/features/workflow/security.py`). La puntuación parte de `100` y aplica las penalizaciones de las reglas incumplidas sin bajar nunca de `0`: `max(0, 100 - penalizaciones)`.
+
+| Regla | Comprobación | Penalización |
+|---|---|---|
+| `SEC-01` | Fijar toda acción externa por SHA completo de 40 caracteres (o digest `sha256` en `docker://`); las acciones locales `./` quedan exentas | `-15` por acción sin fijar (máximo `-45`) |
+| `SEC-02` | Declarar `permissions` en la raíz del workflow o en todos sus jobs | `-10` una sola vez por workflow |
+| `SEC-03` | No usar `permissions: write-all` ni en la raíz ni en ningún job | `-10` una sola vez por workflow |
+| `SEC-04` | No combinar `pull_request_target` con `actions/checkout` apuntando al head del pull request | `-25` por cada aparición |
+
+La puntuación se traduce a una calificación de `A` a `F`:
+
+| Puntuación | 90–100 | 80–89 | 70–79 | 60–69 | 50–59 | 0–49 |
+|---|---|---|---|---|---|---|
+| Calificación | `A` | `B` | `C` | `D` | `E` | `F` |
+
+**Carácter no bloqueante y advertencia.** L4 nunca impide pasar a `validated` ni publicar con DOI. Se calcula y guarda en `WorkflowDataset.security_score` y `WorkflowDataset.grade` al subir un paquete (`upload_package`), al validar una versión (`validate_l2_version` / `validate_l1_version`) y al publicar una nueva versión mayor (`NewVersionService.publish`). Si la calificación es inferior a `C` (`D`, `E` o `F`), ActionHub muestra una advertencia de seguridad visible en la ficha del workflow, en el bloque común del dataset y al publicar.
+
+**Limitación conocida (`SEC-04`).** En el alcance mínimo de M3, `SEC-04` detecta únicamente pasos `actions/checkout` con `with.ref` apuntando al head del PR bajo `pull_request_target`; no analiza comandos de consola como `gh pr checkout` o `git checkout` dentro de un bloque `run`.
+
 ## Descarga
 
 `GET /workflow/<id>/download` (botón «Descargar paquete (.zip)» en la ficha) devuelve un ZIP con el paquete tal como se subió:
@@ -155,7 +176,7 @@ La página pública del DOI (`/doi/<doi>/`) de un workflow enlaza a esta descarg
 | `issue-label-bot` | E | 55 | borrador (`validated`) | Tres acciones sin fijar, dos en `@main` (SEC-01, -45 con el tope) |
 | `pr-preview-deploy` | F | 35 | publicado (`10.1234/workflow6`) | Dos acciones en `@master` (SEC-01, -30), `write-all` (SEC-03, -10) y `pull_request_target` con checkout del head (SEC-04, -25) |
 
-La nota y la puntuación son las que dan las reglas L4 de #18 (SEC-01 a SEC-04) para cada `workflow.yml`. Mientras #18 no esté en `trunk`, el seeder las fija con esos mismos valores. Los publicados tienen DOI falso sin deposition: no se llama a Zenodo ni a fakenodo. Si un paquete ya existe (mismo `name`), el seeder no lo vuelve a crear.
+La nota y la puntuación son las que dan las reglas L4 de #18 (SEC-01 a SEC-04) para cada `workflow.yml`. Los publicados tienen DOI falso sin deposition: no se llama a Zenodo ni a fakenodo. Si un paquete ya existe (mismo `name`), el seeder no lo vuelve a crear.
 
 ## Errores habituales
 
@@ -184,3 +205,5 @@ La nota y la puntuación son las que dan las reglas L4 de #18 (SEC-01 a SEC-04) 
 - `app/features/workflow/tests/test_metadata.py`
 - `migrations/versions/004.py`
 - `app/features/workflow/tests/test_lifecycle.py`
+- `app/features/workflow/security.py`
+- `app/features/workflow/tests/test_security.py`

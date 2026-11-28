@@ -17,6 +17,7 @@ from app.features.workflow.metadata import MetadataError, WorkflowMetadataExtrac
 from app.features.workflow.models import ValidationStatus, WorkflowDataset, WorkflowVersion
 from app.features.workflow.package import PackageIssue, PackageValidator
 from app.features.workflow.repositories import WorkflowDatasetRepository, WorkflowVersionRepository
+from app.features.workflow.security import L4SecurityEvaluator, SecurityEvaluationError
 from app.features.workflow.validation import L1Validator, L2Validator
 
 logger = logging.getLogger(__name__)
@@ -51,15 +52,24 @@ class WorkflowDatasetService(BaseService):
         return L2Validator().validate_text(text)
 
     def validate_l2_version(self, version):
-        """Run L1 + L2 on a version and update the parent workflow status.
+        """Run L1 + L2 on a version, update status and compute L4 security grade.
 
         L1 and L2 are blocking: a failure in either layer sets
         ``validation_status='failed'`` and blocks transition to ``validated``.
+        L4 is non-blocking: once L1 + L2 pass, ``security_score`` and ``grade``
+        are stored regardless of how low the grade is.
         A published workflow cannot be validated again (``InvalidTransition``, #19).
         """
         workflow = version.workflow_dataset
         result = L2Validator().validate_text(version.workflow_yaml)
         transition(workflow, ValidationStatus.VALIDATED if result.valid else ValidationStatus.FAILED)
+        if result.valid:
+            security = L4SecurityEvaluator().evaluate_text(version.workflow_yaml)
+            workflow.security_score = security.score
+            workflow.grade = security.grade
+        else:
+            workflow.security_score = None
+            workflow.grade = None
         self.repository.session.commit()
         return result
 
@@ -116,8 +126,15 @@ class WorkflowDatasetService(BaseService):
                     )
                 )
 
+                        security = L4SecurityEvaluator().evaluate_text(result.workflow_yaml)
             manifest_json = json.dumps(manifest, ensure_ascii=False, sort_keys=True)
-            columns = {"validation_status": ValidationStatus.VALIDATED, "package_format": "zip", **fields}
+            columns = {
+                "validation_status": ValidationStatus.VALIDATED,
+                "security_score": security.score,
+                "grade": security.grade,
+                "package_format": "zip",
+                **fields,
+            }
             dataset = WorkflowDataset(
                 user_id=owner.id,
                 ds_meta_data_id=metadata.id,
@@ -238,4 +255,18 @@ class WorkflowDatasetService(BaseService):
             return self.extract_metadata(text).to_json()
         except MetadataError:
             logger.warning("Workflow metadata could not be extracted: not a YAML mapping")
+            return None
+
+    def evaluate_security(self, text: str):
+        """Evaluate L4 security rules and return a ``SecurityReport``."""
+        return L4SecurityEvaluator().evaluate_text(text)
+
+    def security_report_for(self, workflow: WorkflowDataset):
+        """Compute the L4 report for the current version of ``workflow``, or ``None``."""
+        latest = workflow.latest_version()
+        if latest is None or not latest.workflow_yaml:
+            return None
+        try:
+            return self.evaluate_security(latest.workflow_yaml)
+        except SecurityEvaluationError:
             return None

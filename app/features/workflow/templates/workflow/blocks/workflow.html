@@ -14,6 +14,11 @@
             <div><span class="text-secondary">Estado:</span> {{ dataset.validation_status }}</div>
             <div><span class="text-secondary">Versiones:</span> {{ dataset.versions|length }}</div>
             <div><span class="text-secondary">Archivos:</span> {{ dataset.get_files_count() }}</div>
+            {% if dataset.has_security_warning() %}
+            <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small" role="alert">
+                <strong>Advertencia de seguridad:</strong> calificación {{ dataset.grade }}. Revisa el detalle antes de usarlo.
+            </div>
+            {% endif %}
         </div>
     </div>
 
